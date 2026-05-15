@@ -55,6 +55,41 @@ export const systemRoutes: AppRouteRecord = {
           { title: '删除', authMark: 'delete' }
         ]
       }
+    },
+    {
+      path: 'metadata',
+      name: 'Metadata',
+      redirect: '/system/metadata/collection',
+      meta: {
+        title: '元数据管理',
+        icon: 'ri:database-2-line',
+        keepAlive: true,
+        roles: ['R_SUPER', 'R_ADMIN']
+      },
+      children: [
+        {
+          path: 'collection',
+          name: 'MetadataCollection',
+          component: '/system/metadata/collection',
+          meta: {
+            title: '数据表管理',
+            keepAlive: true,
+            roles: ['R_SUPER', 'R_ADMIN']
+          }
+        },
+        {
+          path: 'field/:collectionId',
+          name: 'MetadataField',
+          component: '/system/metadata/field',
+          meta: {
+            title: '字段管理',
+            isHide: true,
+            keepAlive: true,
+            isHideTab: true,
+            roles: ['R_SUPER', 'R_ADMIN']
+          }
+        }
+      ]
     }
   ]
 }
