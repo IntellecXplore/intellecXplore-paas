@@ -60,10 +60,11 @@ export const useAuth = () => {
    */
   const hasAuth = (auth: string): boolean => {
     // 前端模式
+    console.log(isFrontendMode.value)
     if (isFrontendMode.value) {
       return frontendAuthList.includes(auth)
     }
-
+    console.log('backendAuthList', backendAuthList)
     // 后端模式
     return backendAuthList.some((item) => item?.authMark === auth)
   }

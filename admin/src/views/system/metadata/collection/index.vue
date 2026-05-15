@@ -6,7 +6,7 @@
       <ArtTableHeader v-model:columns="columnChecks" :loading="loading" @refresh="refreshData">
         <template #left>
           <ElSpace wrap>
-            <ElButton v-auth="'system:metadata:collection:create'" @click="showDialog('add')" v-ripple>新增数据表</ElButton>
+            <ElButton v-auth="'system:metadata:collection:create'" @click="showSchemaDialog" v-ripple>新增</ElButton>
           </ElSpace>
         </template>
       </ArtTableHeader>
@@ -18,6 +18,7 @@
 
       <CollectionDialog v-model:visible="dialogVisible" :type="dialogType" :data="currentData"
         @submit="handleDialogSubmit" />
+      <CollectionSchemaDialog v-model:visible="schemaDialogVisible" @submit="handleSchemaSubmit" />
     </ElCard>
   </div>
 </template>
@@ -33,6 +34,7 @@ import {
 } from '@/api/metadata/collection'
 import CollectionSearch from './modules/collection-search.vue'
 import CollectionDialog from './modules/collection-dialog.vue'
+import CollectionSchemaDialog from './modules/collection-schema-dialog.vue'
 import { ElTag, ElMessageBox } from 'element-plus'
 import { DialogType } from '@/types'
 import { useRouter } from 'vue-router'
@@ -46,6 +48,7 @@ type CollectionListItem = Api.MetadataCollection.CollectionListItem
 
 const dialogType = ref<DialogType>('add')
 const dialogVisible = ref(false)
+const schemaDialogVisible = ref(false)
 const currentData = ref<Partial<CollectionListItem>>({})
 
 const searchForm = ref({
@@ -201,6 +204,10 @@ const toggleStatus = (row: CollectionListItem) => {
   }).catch(() => { ElMessage.info('已取消') })
 }
 
+const showSchemaDialog = () => {
+  schemaDialogVisible.value = true
+}
+
 const handleDialogSubmit = async () => {
   try {
     await refreshData()
@@ -208,5 +215,9 @@ const handleDialogSubmit = async () => {
   } catch (error) {
     console.error('提交失败:', error)
   }
+}
+
+const handleSchemaSubmit = async () => {
+  await refreshData()
 }
 </script>

@@ -2,7 +2,7 @@ import { Context } from 'elysia';
 import { eq, inArray, and } from 'drizzle-orm';
 import { BaseResultData } from '@/core/result';
 import {
-    InsertOne, FindOneByKey, UpdateByKey, SoftDeleteByKeys,
+    InsertOne, InsertOneAndRes, FindOneByKey, UpdateByKey, SoftDeleteByKeys,
     CreateQueryBuilder, FindPage, FindAll,
 } from '@/core/database/repository';
 import { db } from '@/core/database/repository';
@@ -78,8 +78,8 @@ function buildDDL(tableName: string, fields: any[]): string {
 
 export async function create(ctx: Context) {
     try {
-        await InsertOne(metadataCollectionsSchema, ctx);
-        return BaseResultData.ok();
+        const record = await InsertOneAndRes(metadataCollectionsSchema, ctx);
+        return BaseResultData.ok(record);
     } catch (error) {
         return BaseResultData.fail(500, error);
     }

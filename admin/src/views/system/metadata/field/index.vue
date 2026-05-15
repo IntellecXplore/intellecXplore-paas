@@ -1,23 +1,23 @@
 <template>
   <div class="field-page art-full-height">
-    <div class="mb-4 flex items-center justify-between">
-      <div>
-        <ElButton v-ripple @click="goBack" :icon="ArrowLeft">返回列表</ElButton>
-        <span class="ml-4 text-lg font-medium" v-if="collectionInfo">
-          {{ collectionInfo.label }} ({{ collectionInfo.tableName }})
-          <ElTag class="ml-2" :type="statusTag(collectionInfo.status)">{{ statusLabel(collectionInfo.status) }}</ElTag>
-        </span>
-      </div>
-      <ElSpace v-if="canEdit">
-        <ElButton v-auth="'system:metadata:field:create'" type="primary" @click="showDialog('add')" v-ripple>新增字段</ElButton>
-      </ElSpace>
+    <div class="mb-4 flex items-center">
+      <ElButton v-ripple @click="goBack" :icon="ArrowLeft">返回列表</ElButton>
+      <span class="ml-4 text-lg font-medium" v-if="collectionInfo">
+        {{ collectionInfo.label }} ({{ collectionInfo.tableName }})
+        <ElTag class="ml-2" :type="statusTag(collectionInfo.status)">{{ statusLabel(collectionInfo.status) }}</ElTag>
+      </span>
     </div>
 
     <ElCard class="art-table-card" shadow="never">
       <ArtTableHeader :loading="loading" @refresh="refreshData">
         <template #left>
           <ElSpace v-if="canEdit" wrap>
-            <ElButton v-auth="'system:metadata:field:update'" @click="showSortDialog" v-ripple>批量排序</ElButton>
+            <ElButton v-auth="'system:metadata:field:create'" type="primary" @click="showDialog('add')" v-ripple>
+              新增字段
+            </ElButton>
+            <ElButton v-auth="'system:metadata:field:update'" @click="showSortDialog" v-ripple>
+              批量排序
+            </ElButton>
           </ElSpace>
         </template>
       </ArtTableHeader>
