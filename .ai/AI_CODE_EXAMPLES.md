@@ -222,7 +222,14 @@ export default XxxModule;
 
 ## task.ts — Scheduled Task Functions
 
-task.ts exports plain functions. The function name must match the `jobName` stored in the database.
+Every module must have a `task.ts`. If no scheduled tasks are needed, use the minimal form:
+
+```ts
+// {module-name} 模块当前无定时任务
+export const tasks = [] as const;
+```
+
+If the module has scheduled tasks, export plain functions whose names match the `jobName` stored in `monitor_job` table:
 
 ```ts
 import { logger } from "@/shared/logger";

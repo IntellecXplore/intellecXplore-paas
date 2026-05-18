@@ -39,12 +39,15 @@ head:
 
 | 字段名 | 类型 | 说明 | 默认值 |
 |--------|------|------|--------|
+| tenantId | bigint | 租户 ID（多租户隔离） | 1 |
 | createTime | timestamp | 创建时间 | 当前时间 |
 | createBy | bigint | 创建人ID | null |
 | updateTime | timestamp | 更新时间 | null |
 | updateBy | bigint | 更新人ID | null |
 | delFlag | boolean | 删除标志 | false |
 | remark | varchar(255) | 备注 | null |
+
+> **多租户说明**：`tenantId` 默认为 1（默认租户）。查询/写入时由 Repository 层自动注入和过滤，业务代码通过 `CreateQueryBuilder(schema, ctx.tenantId)` 透传即可。详见 [多租户设计规范](/specs/multi-tenant/design)。
 
 ## 数据库表分类
 
@@ -310,6 +313,43 @@ erDiagram
 - AWS S3
 - MinIO
 
+### 多租户模块（Multi-Tenant）
+
+#### 21. system_tenant - 租户信息表
+
+存储租户（企业）的基本信息，**不继承 BaseSchema**（租户表自身是租户体系的根节点）。
+
+| 字段名 | 类型 | 约束 | 说明 |
+|--------|------|------|------|
+| tenant_id | bigserial | PK | 租户 ID |
+| tenant_name | varchar(100) | NOT NULL | 企业名称 |
+| tenant_code | varchar(50) | NOT NULL, UNIQUE | 租户标识（用于子域名等） |
+| contact_name | varchar(50) | | 联系人 |
+| contact_phone | varchar(20) | | 联系电话 |
+| status | boolean | DEFAULT true | 状态（false=禁用） |
+| expire_time | timestamptz | | 租期截止时间，NULL=永久 |
+| config | jsonb | DEFAULT '{}' | 租户级配置（logo、主题、配额等） |
+| create_time | timestamptz | DEFAULT now() | 创建时间 |
+| update_time | timestamptz | | 更新时间 |
+| del_flag | boolean | DEFAULT false | 删除标志 |
+| remark | varchar(255) | | 备注 |
+
+#### 22. system_user_tenant - 用户-租户关联表
+
+支持一个用户属于多个租户，通过 `is_default` 标记登录时的默认选择。
+
+| 字段名 | 类型 | 约束 | 说明 |
+|--------|------|------|------|
+| user_tenant_id | bigserial | PK | 关联 ID |
+| user_id | bigint | FK, NOT NULL | 用户 ID |
+| tenant_id | bigint | FK, NOT NULL | 租户 ID |
+| is_default | smallint | DEFAULT 0 | 是否默认租户 |
+
+**关联关系：**
+- 多对一：关联 → system_user
+- 多对一：关联 → system_tenant
+- 唯一约束：`UNIQUE(user_id, tenant_id)`
+
 ### 监控管理模块（Monitor）
 
 #### 15. monitor_job - 定时任务表
@@ -436,6 +476,20 @@ erDiagram
 ### 推荐索引
 
 ```sql [sql]
+-- 多租户：租户作用域高频查询应包含 tenant_id 前缀
+CREATE INDEX idx_role_tenant ON system_role(tenant_id);
+CREATE INDEX idx_menu_tenant ON system_menu(tenant_id);
+CREATE INDEX idx_dept_tenant ON system_dept(tenant_id);
+CREATE INDEX idx_user_tenant ON system_user(tenant_id);
+
+-- 多租户复合索引：租户 + 状态
+CREATE INDEX idx_role_tenant_status ON system_role(tenant_id, status, del_flag);
+CREATE INDEX idx_menu_tenant_status ON system_menu(tenant_id, status, del_flag);
+
+-- 用户-租户关联
+CREATE INDEX idx_user_tenant_user ON system_user_tenant(user_id);
+CREATE UNIQUE INDEX uq_user_tenant ON system_user_tenant(user_id, tenant_id);
+
 -- 用户表
 CREATE INDEX idx_user_username ON system_user(username);
 CREATE INDEX idx_user_dept ON system_user(dept_id);

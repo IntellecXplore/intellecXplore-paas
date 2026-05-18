@@ -25,9 +25,18 @@ modules/{moduleName}/
     route.ts
     task.ts
 
-Do not add extra files unless explicitly required.
 Do not rename files.
-Do not change folder structure.
+
+**例外：复杂模块额外支撑文件**
+
+以下情况允许模块内额外的文件/子目录，但必须保留 4 核心文件：
+
+- **Agent 模块**：允许 `agents/` 子目录存放 Agent 定义（prompt/tools），Agent 基础设施代码应放在 `core/agent/`
+- **工作流模块**：允许 executor.ts、registry.ts、template-engine.ts、types.ts 等核心引擎文件
+- **元数据模块**：允许动态 DDL 构建等支撑文件
+
+额外文件必须与模块强相关，纯基础设施代码应提取到 `core/` 层。
+Do not change folder structure lightly.
 
 ---
 
