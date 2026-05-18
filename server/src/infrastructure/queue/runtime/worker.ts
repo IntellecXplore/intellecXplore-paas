@@ -9,6 +9,7 @@ import { logger } from '@/shared/logger';
 import '../queues/system-cron/worker';
 import '../queues/flow-buffer/worker';
 import '../queues/trade-order/worker';
+import '../queues/workflow-execution/worker';
 
 logger.success('[Runtime] ✓ 所有 Worker 已启动');
 
