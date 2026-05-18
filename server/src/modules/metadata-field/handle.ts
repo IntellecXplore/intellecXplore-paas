@@ -8,6 +8,7 @@ import {
 import { db } from '@/core/database/repository';
 import { metadataFieldsSchema } from '@database/schema/metadata_fields';
 import { metadataRelationsSchema } from '@database/schema/metadata_relations';
+import { metadataCollectionsSchema } from '@database/schema/metadata_collections';
 
 export async function create(ctx: Context) {
     try {
@@ -22,7 +23,7 @@ export async function findList(ctx: Context) {
     try {
         const { pageNum = 1, pageSize = 10, orderByColumn = "sort_order",
                 sortRule = "asc", collectionId, columnName, type } = ctx.query;
-        const whereCondition = CreateQueryBuilder(metadataFieldsSchema)
+        const whereCondition = CreateQueryBuilder(metadataFieldsSchema, (ctx as any)?.tenantId)
             .eq('delFlag', false)
             .eq('collectionId', collectionId)
             .like('columnName', columnName)
@@ -40,7 +41,7 @@ export async function findList(ctx: Context) {
 export async function findOne(ctx: Context) {
     try {
         const fid = Number(ctx.params.id);
-        const data = await FindOneByKey(metadataFieldsSchema, 'id', fid);
+        const data = await FindOneByKey(metadataFieldsSchema, 'id', fid, (ctx as any)?.tenantId);
         if (!data || data.delFlag) return BaseResultData.fail(404);
         return BaseResultData.ok(data);
     } catch (error) {
@@ -52,7 +53,8 @@ export async function update(ctx: Context) {
     try {
         const body = ctx.body as Record<string, any>;
         const fid = body.id;
-        const current = await FindOneByKey(metadataFieldsSchema, 'id', fid);
+        const tenantId = (ctx as any)?.tenantId;
+        const current = await FindOneByKey(metadataFieldsSchema, 'id', fid, tenantId);
         if (!current || current.delFlag) return BaseResultData.fail(404);
 
         const expectedVersion = current.version || 0;
@@ -69,6 +71,7 @@ export async function update(ctx: Context) {
             .where(and(
                 eq(metadataFieldsSchema.id, fid),
                 eq(metadataFieldsSchema.version, expectedVersion),
+                eq(metadataFieldsSchema.tenantId, tenantId!),
             ))
             .returning({ id: metadataFieldsSchema.id });
 
@@ -84,9 +87,21 @@ export async function update(ctx: Context) {
 export async function remove(ctx: Context) {
     try {
         const ids: number[] = ctx.params.ids.split(',').map(Number);
+        const checkedCollections = new Set<number>();
+        const tenantId = (ctx as any)?.tenantId;
         for (const fid of ids) {
-            const field = await FindOneByKey(metadataFieldsSchema, 'id', fid);
+            const field = await FindOneByKey(metadataFieldsSchema, 'id', fid, tenantId);
             if (!field) continue;
+
+            // 校验 Collection 状态：仅 draft/sync_failed 可删除字段
+            if (!checkedCollections.has(field.collectionId)) {
+                const coll = await FindOneByKey(metadataCollectionsSchema, 'id', field.collectionId, tenantId);
+                if (!coll || coll.delFlag) return BaseResultData.fail(404, '所属数据表不存在');
+                if (coll.status !== 'draft' && coll.status !== 'sync_failed') {
+                    return BaseResultData.fail(400, `数据表状态为"${coll.status}"，仅草稿或失败状态可删除字段`);
+                }
+                checkedCollections.add(field.collectionId);
+            }
 
             const sourceRef = await db.select({ total: count() })
                 .from(metadataRelationsSchema)
@@ -117,11 +132,15 @@ export async function remove(ctx: Context) {
 export async function sortFields(ctx: Context) {
     try {
         const { fields } = ctx.body as { fields: { id: number, sortOrder: number }[] };
+        const tenantId = (ctx as any)?.tenantId;
         await db.transaction(async (tx) => {
             for (const item of fields) {
+                const where = tenantId
+                    ? and(eq(metadataFieldsSchema.id, item.id), eq(metadataFieldsSchema.tenantId, tenantId))
+                    : eq(metadataFieldsSchema.id, item.id);
                 await tx.update(metadataFieldsSchema)
                     .set({ sortOrder: item.sortOrder, updateTime: new Date() } as any)
-                    .where(eq(metadataFieldsSchema.id, item.id));
+                    .where(where);
             }
         });
         return BaseResultData.ok();

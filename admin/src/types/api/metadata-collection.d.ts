@@ -1,5 +1,21 @@
 declare namespace Api {
     namespace MetadataCollection {
+        interface StorageConfig {
+            host: string;
+            port: number;
+            username: string;
+            password: string;
+            database: string;
+            schema?: string;
+            poolMax?: number;
+            idleTimeout?: number;
+            connectTimeout?: number;
+            ssl?: boolean;
+            lastTestTime?: string;
+            testResult?: 'success' | 'failed' | null;
+            testError?: string;
+        }
+
         interface CollectionListItem {
             id?: number;
             tableName: string;
@@ -7,6 +23,7 @@ declare namespace Api {
             description?: string;
             databaseType: string;
             namespace?: string;
+            storageConfig?: StorageConfig | null;
             status?: string;
             version?: number;
             createTime?: Date;

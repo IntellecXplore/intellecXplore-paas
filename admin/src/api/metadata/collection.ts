@@ -9,6 +9,15 @@ export function fetchCreateCollection(data: Api.MetadataCollection.CollectionLis
     })
 }
 
+export function fetchCreateCollectionWithFields(data: { collection: Record<string, any>; fields: Record<string, any>[] }) {
+    return request.post({
+        url: '/api/system/metadata/collection/with-fields',
+        data,
+        showSuccessMessage: true,
+        showErrorMessage: true
+    })
+}
+
 export function fetchGetCollectionList(params: Api.MetadataCollection.CollectionSearchParams) {
     return request.get<Api.MetadataCollection.CollectionList>({
         url: '/api/system/metadata/collection/list',
@@ -52,6 +61,28 @@ export function fetchToggleCollectionStatus(id: number) {
         url: `/api/system/metadata/collection/${id}/toggle-status`,
         showSuccessMessage: true,
         showErrorMessage: true
+    })
+}
+
+export function fetchTestConnection(config: Record<string, any>) {
+    return request.post({
+        url: '/api/system/metadata/collection/test-connection',
+        data: config,
+        showErrorMessage: true,
+    })
+}
+
+export function fetchTestSchema(config: Record<string, any>) {
+    return request.post({
+        url: '/api/system/metadata/collection/test-schema',
+        data: config,
+        showErrorMessage: true,
+    })
+}
+
+export function fetchSystemDbConfig() {
+    return request.get({
+        url: '/api/system/config/database',
     })
 }
 

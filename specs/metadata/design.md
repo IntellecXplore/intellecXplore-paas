@@ -229,8 +229,11 @@ server/src/modules/
 | GET | `/system/metadata/collection/:id` | 查询详情（含 fields） | `system:metadata:collection:query` |
 | PUT | `/system/metadata/collection` | 更新基本信息 | `system:metadata:collection:update` |
 | POST | `/system/metadata/collection/:id/publish` | 发布（draft→preparing→staging） | `system:metadata:collection:update` |
-| POST | `/system/metadata/collection/:id/deploy` | 部署上台（staging→active） | `system:metadata:collection:update` |
-| POST | `/system/metadata/collection/:id/disable` | 停用 | `system:metadata:collection:update` |
+| POST | `/system/metadata/collection/:id/deploy` | 部署上线（staging→active） | `system:metadata:collection:update` |
+| POST | `/system/metadata/collection/:id/toggle-status` | 切换状态（停用/激活） | `system:metadata:collection:update` |
+| POST | `/system/metadata/collection/test-connection` | 测试数据库连接 | — |
+| POST | `/system/metadata/collection/test-schema` | 验证/创建 Schema | — |
+| GET | `/system/config/database` | 获取系统数据库配置 | — |
 | DELETE | `/system/metadata/collection/:ids` | 软删除 | `system:metadata:collection:delete` |
 
 #### metadata-field

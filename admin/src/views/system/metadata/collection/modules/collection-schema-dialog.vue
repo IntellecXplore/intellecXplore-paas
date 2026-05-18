@@ -28,6 +28,40 @@
       </ElFormItem>
     </ElForm>
 
+    <!-- 数据库配置 -->
+    <ElDivider content-position="left">
+      数据库配置
+      <span class="text-xs text-gray-400 ml-2">（不填则使用系统默认数据库）</span>
+    </ElDivider>
+    <ElForm :model="dbForm" label-width="90px" :inline="true">
+      <ElFormItem label="主机地址">
+        <ElInput v-model="dbForm.host" placeholder="localhost" style="width: 180px" />
+      </ElFormItem>
+      <ElFormItem label="端口">
+        <ElInputNumber v-model="dbForm.port" :min="1" :max="65535" style="width: 120px" />
+      </ElFormItem>
+      <ElFormItem label="用户名">
+        <ElInput v-model="dbForm.username" placeholder="postgres" style="width: 160px" />
+      </ElFormItem>
+      <ElFormItem label="密码">
+        <ElInput v-model="dbForm.password" type="password" show-password placeholder="密码" style="width: 160px" />
+      </ElFormItem>
+      <ElFormItem label="数据库名">
+        <ElInput v-model="dbForm.database" placeholder="database_name" style="width: 180px" />
+      </ElFormItem>
+      <ElFormItem label="Schema">
+        <ElInput v-model="dbForm.schema" placeholder="public" style="width: 160px" />
+      </ElFormItem>
+      <ElFormItem>
+        <ElButton size="small" @click="handleTestConnection" :loading="testing">
+          测试连接
+        </ElButton>
+        <ElButton size="small" @click="handleTestSchema" :loading="testingSchema" class="ml-2">
+          验证/创建 Schema
+        </ElButton>
+      </ElFormItem>
+    </ElForm>
+
     <!-- 字段定义 -->
     <ElDivider content-position="left">
       字段定义
@@ -81,6 +115,13 @@
           <ElInput v-model="fieldList[$index].default_value" placeholder="默认值" size="small" />
         </template>
       </ElTableColumn>
+      <ElTableColumn label="枚举选项" width="200">
+        <template #default="{ row, $index }">
+          <ElInput v-if="row.type === 'enum'" v-model="fieldList[$index].enumOptions"
+            placeholder="每行: label value" type="textarea" :rows="2" size="small" />
+          <span v-else class="text-xs text-gray-400">仅 enum 类型</span>
+        </template>
+      </ElTableColumn>
       <ElTableColumn label="操作" width="70" align="center" fixed="right">
         <template #default="{ $index }">
           <ElButton size="small" type="danger" :icon="Delete" circle @click="removeField($index)" />
@@ -105,8 +146,7 @@
 <script setup lang="ts">
 import { Plus, Delete } from '@element-plus/icons-vue'
 import type { FormRules } from 'element-plus'
-import { fetchCreateCollection } from '@/api/metadata/collection'
-import { fetchCreateField } from '@/api/metadata/field'
+import { fetchCreateCollection, fetchCreateCollectionWithFields, fetchTestConnection, fetchTestSchema, fetchSystemDbConfig } from '@/api/metadata/collection'
 
 interface FieldDef {
   columnName: string
@@ -118,6 +158,8 @@ interface FieldDef {
   indexed: boolean
   nullable: boolean
   default_value: string
+  enumOptions: string
+  uiConfig?: Record<string, any>
 }
 
 interface Props {
@@ -149,6 +191,19 @@ const defaultBaseForm = () => ({
 })
 
 const baseForm = reactive(defaultBaseForm())
+
+const defaultDbForm = () => ({
+  host: '',
+  port: 5432 as number,
+  username: '',
+  password: '',
+  database: '',
+  schema: 'collection' as string,
+})
+
+const dbForm = reactive(defaultDbForm())
+const testing = ref(false)
+const testingSchema = ref(false)
 
 const baseRules: FormRules = {
   tableName: [
@@ -186,6 +241,7 @@ const defaultField = (): FieldDef => ({
   indexed: false,
   nullable: true,
   default_value: '',
+  enumOptions: '',
 })
 
 const fieldList = ref<FieldDef[]>([])
@@ -196,6 +252,68 @@ const addField = () => {
 
 const removeField = (index: number) => {
   fieldList.value.splice(index, 1)
+}
+
+function getStorageConfig() {
+  if (!dbForm.host || !dbForm.database || !dbForm.username) return null
+  return {
+    host: dbForm.host,
+    port: dbForm.port,
+    username: dbForm.username,
+    password: dbForm.password,
+    database: dbForm.database,
+    schema: dbForm.schema || 'public',
+  }
+}
+
+async function handleTestConnection() {
+  const config = getStorageConfig()
+  if (!config) {
+    ElMessage.warning('请先填写主机地址、数据库名和用户名')
+    return
+  }
+  testing.value = true
+  try {
+    const res: any = await fetchTestConnection(config)
+    if (res?.success) {
+      ElMessage.success(`连接成功 (${res.latency}ms)`)
+    } else {
+      ElMessage.error(`连接失败: ${res?.error || '未知错误'}`)
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '测试失败')
+  } finally {
+    testing.value = false
+  }
+}
+
+async function handleTestSchema() {
+  const config = getStorageConfig()
+  if (!config) {
+    ElMessage.warning('请先填写主机地址、数据库名和用户名')
+    return
+  }
+  if (!dbForm.schema || dbForm.schema === 'public') {
+    ElMessage.info('Schema "public" 默认存在，无需验证')
+    return
+  }
+  testingSchema.value = true
+  try {
+    const res: any = await fetchTestSchema({ ...config, createIfNotExists: true })
+    if (res?.connectionError) {
+      ElMessage.error(`连接失败: ${res.connectionError}`)
+    } else if (res?.created) {
+      ElMessage.success(`Schema "${res.schema}" 已创建`)
+    } else if (res?.schemaExists) {
+      ElMessage.success(`Schema "${res.schema}" 已存在`)
+    } else {
+      ElMessage.warning(`Schema "${res.schema}" 不存在`)
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '验证失败')
+  } finally {
+    testingSchema.value = false
+  }
 }
 
 const handleGenerate = async () => {
@@ -223,25 +341,19 @@ const handleGenerate = async () => {
 
   loading.value = true
   try {
-    // 1. 创建 collection
-    const res: any = await fetchCreateCollection({
-      tableName: baseForm.tableName,
-      label: baseForm.label,
-      description: baseForm.description,
-      databaseType: baseForm.databaseType,
-      namespace: baseForm.namespace || undefined,
-    })
-    const collectionId = res?.id
-    if (!collectionId) {
-      ElMessage.error('创建数据表失败：未获取到 ID')
-      loading.value = false
-      return
-    }
-
-    // 2. 逐个创建字段
-    for (const f of validFields) {
-      await fetchCreateField({
-        collectionId,
+    const storageConfig = getStorageConfig()
+    const fieldsPayload = validFields.map((f) => {
+      let uiConfig: Record<string, any> | undefined
+      if (f.type === 'enum' && f.enumOptions.trim()) {
+        const options = f.enumOptions.trim().split('\n').filter(Boolean).map(line => {
+          const parts = line.trim().split(/\s+/)
+          const value = parts.pop() || ''
+          const label = parts.join(' ') || value
+          return { label, value }
+        })
+        if (options.length > 0) uiConfig = { options }
+      }
+      return {
         columnName: f.columnName,
         label: f.label || undefined,
         type: f.type,
@@ -251,8 +363,21 @@ const handleGenerate = async () => {
         indexed: f.indexed,
         nullable: f.nullable,
         default_value: f.default_value || undefined,
-      })
-    }
+        uiConfig: uiConfig || undefined,
+      }
+    })
+
+    await fetchCreateCollectionWithFields({
+      collection: {
+        tableName: baseForm.tableName,
+        label: baseForm.label,
+        description: baseForm.description,
+        databaseType: baseForm.databaseType,
+        namespace: baseForm.namespace || undefined,
+        storageConfig: storageConfig || undefined,
+      },
+      fields: fieldsPayload,
+    })
 
     ElMessage.success(`数据表 "${baseForm.label}" 创建成功，已添加 ${validFields.length} 个字段`)
     emit('submit')
@@ -264,8 +389,23 @@ const handleGenerate = async () => {
   }
 }
 
+watch(() => props.visible, async (val) => {
+  if (val) {
+    try {
+      const res: any = await fetchSystemDbConfig()
+      if (res?.host) {
+        dbForm.host = res.host
+        dbForm.port = res.port
+        dbForm.username = res.username
+        dbForm.database = res.database
+      }
+    } catch { /* 保持默认值 */ }
+  }
+})
+
 const handleClosed = () => {
   Object.assign(baseForm, defaultBaseForm())
+  Object.assign(dbForm, defaultDbForm())
   fieldList.value = []
   baseFormRef.value?.resetFields()
   loading.value = false

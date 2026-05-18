@@ -28,8 +28,22 @@ import { formatMenuTitle } from '@/utils/router'
 import type { FormItem } from '@/components/core/forms/art-form/index.vue'
 import ArtForm from '@/components/core/forms/art-form/index.vue'
 import { useWindowSize } from '@vueuse/core'
+import { fetchGetCollectionList } from '@/api/metadata/collection'
 
 const { width } = useWindowSize()
+
+const collectionOptions = ref<{ label: string; value: number }[]>([])
+
+async function loadCollectionOptions() {
+  try {
+    const res = await fetchGetCollectionList({ status: 'active', pageSize: 999 }) as any
+    const list = res?.list || res?.records || []
+    collectionOptions.value = list.map((c: any) => ({
+      label: `${c.label} (${c.tableName})`,
+      value: c.id,
+    }))
+  } catch { /* ignore */ }
+}
 
 /**
  * 创建带 tooltip 的表单标签
@@ -72,6 +86,7 @@ interface MenuFormData {
   activePath?: string
   parentId?: number
   permission?: string
+  metadataCollectionId?: number
 }
 
 interface Props {
@@ -161,6 +176,16 @@ const formItems = computed<FormItem[]>(() => {
         key: 'component',
         type: 'input',
         props: { placeholder: '如：/system/user 或留空' }
+      },
+      {
+        label: '关联Collection',
+        key: 'metadataCollectionId',
+        type: 'select',
+        props: {
+          placeholder: '选择关联的数据表（可选）',
+          options: collectionOptions.value,
+          clearable: true,
+        },
       },
       { label: '图标', key: 'icon', type: 'input', props: { placeholder: '如：ri:user-line' } },
       {
@@ -270,6 +295,7 @@ const resetForm = (): void => {
   form.activePath = ''
   form.parentId = 0
   form.permission = ''
+  form.metadataCollectionId = undefined
 }
 
 /**
@@ -328,6 +354,7 @@ const loadFormData = (): void => {
     form.fixedTab = row.fixedTab ?? false
     form.activePath = row.activePath || ''
     form.parentId = row.parentId || 0
+    form.metadataCollectionId = row.metadataCollectionId || undefined
   } else {
     const row = props.editData
     // 优先使用 btnId，因为 menuId 可能是字符串格式（用于 rowKey）
@@ -379,6 +406,7 @@ watch(
   () => props.visible,
   (newVal) => {
     if (newVal) {
+      loadCollectionOptions()
       // 先重置表单，清除旧数据
       resetForm()
       // 设置菜单类型
