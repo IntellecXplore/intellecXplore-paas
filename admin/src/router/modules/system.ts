@@ -57,6 +57,16 @@ export const systemRoutes: AppRouteRecord = {
       }
     },
     {
+      path: 'tenant',
+      name: 'Tenant',
+      component: '/system/tenant',
+      meta: {
+        title: 'menus.system.tenant',
+        keepAlive: true,
+        roles: ['SYS_ADMIN']
+      }
+    },
+    {
       path: 'metadata',
       name: 'Metadata',
       redirect: '/system/metadata/collection',
@@ -85,6 +95,50 @@ export const systemRoutes: AppRouteRecord = {
             title: '字段管理',
             isHide: true,
             keepAlive: true,
+            isHideTab: true,
+            roles: ['R_SUPER', 'R_ADMIN']
+          }
+        },
+        {
+          path: 'dynamic-crud',
+          name: 'DynamicCrud',
+          component: '/system/dynamic-crud',
+          meta: {
+            title: '动态数据',
+            isHide: true,
+            keepAlive: true,
+            isHideTab: true,
+            roles: ['R_SUPER', 'R_ADMIN']
+          }
+        },
+        {
+          path: 'workflow-definitions',
+          name: 'WorkflowDefinitions',
+          component: '/system/workflow/definition',
+          meta: {
+            title: '工作流定义',
+            keepAlive: true,
+            roles: ['R_SUPER', 'R_ADMIN']
+          }
+        },
+        {
+          path: 'workflow-instances',
+          name: 'WorkflowInstances',
+          component: '/system/workflow/instance',
+          meta: {
+            title: '工作流执行历史',
+            keepAlive: true,
+            roles: ['R_SUPER', 'R_ADMIN']
+          }
+        },
+        {
+          path: 'workflow/instances/:id',
+          name: 'WorkflowInstanceDetail',
+          component: '/system/workflow/detail',
+          meta: {
+            title: '执行详情',
+            isHide: true,
+            keepAlive: false,
             isHideTab: true,
             roles: ['R_SUPER', 'R_ADMIN']
           }

@@ -68,6 +68,14 @@ export const globalComponentsConfig: GlobalComponentConfig[] = [
       () => import('@/components/core/others/art-watermark/index.vue')
     ),
     enabled: true
+  },
+  {
+    name: '系统配置',
+    key: 'system-config',
+    component: defineAsyncComponent(
+      () => import('@/components/core/layouts/art-system-config/index.vue')
+    ),
+    enabled: true
   }
 ]
 

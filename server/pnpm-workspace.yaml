@@ -1,0 +1,7 @@
+allowBuilds:
+  esbuild: set this to true or false
+  msgpackr-extract: set this to true or false
+overrides:
+  exact-mirror: 0.2.7
+patchedDependencies:
+  memoirist@0.4.0: patches/memoirist@0.4.0.patch

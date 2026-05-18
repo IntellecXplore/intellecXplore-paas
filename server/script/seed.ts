@@ -7,6 +7,9 @@ import { CacheEnum } from '@/constants/enum';
 import { SYSTEM_API_METHOD } from '@/constants/dict';
 import { logger } from '@/shared/logger';
 import { RegisterAllTasks } from '@/core/task-registry';
+import { systemTenantSchema } from '@database/schema/system_tenant';
+import { systemUserSchema, systemUserTenantSchema } from '@database/schema/system_user';
+import { eq, notInArray } from 'drizzle-orm';
 
 /**
  * 初始化pg数据库
@@ -105,14 +108,65 @@ async function initCronJob() {
 };
 
 /**
+ * 初始化默认租户数据
+ * 1. 确保 system_tenant 表中至少有一条默认租户记录
+ * 2. 为未关联租户的用户自动绑定默认租户
+ */
+async function initTenantData() {
+    try {
+        const existing = await pg.select().from(systemTenantSchema).limit(1);
+        if (existing.length === 0) {
+            await pg.insert(systemTenantSchema).values({
+                tenantName: '默认租户',
+                tenantCode: 'default',
+                contactName: '管理员',
+                status: true,
+                config: {},
+            } as any);
+            logger.success('默认租户初始化成功 (tenantId=1, tenantCode=default)');
+        } else {
+            logger.info('租户数据已存在，跳过初始化');
+        }
+        // 为尚未关联租户的用户绑定默认租户
+        const assignedUserIds = await pg.select({ userId: systemUserTenantSchema.userId })
+            .from(systemUserTenantSchema);
+        const assignedSet = new Set(assignedUserIds.map(r => r.userId));
+        const allUsers = await pg.select({ userId: systemUserSchema.userId })
+            .from(systemUserSchema)
+            .where(eq(systemUserSchema.delFlag, false));
+        const unassigned = allUsers.filter(u => !assignedSet.has(u.userId));
+        if (unassigned.length > 0) {
+            await pg.insert(systemUserTenantSchema).values(
+                unassigned.map(u => ({ userId: u.userId, tenantId: 1, isDefault: 1 } as any))
+            );
+            logger.success(`已为 ${unassigned.length} 个用户绑定默认租户`);
+        }
+    } catch (error) {
+        logger.error('默认租户初始化失败', { error });
+    }
+};
+
+/**
  * 初始化种子数据
  * 1. 初始化pg数据库
- * 2. 初始化api数据
- * 3. 初始化熔断的api数据
- * 4. 初始化cron任务
+ * 2. 初始化默认租户
+ * 3. 初始化api数据
+ * 4. 初始化熔断的api数据
+ * 5. 初始化cron任务
  */
 export async function InitSeedData() {
     await initPgData();
+    await initTenantData();
     await initApiData();
     await initCronJob();
+    await initSystemMetadata();
 };
+
+async function initSystemMetadata() {
+    try {
+        const { seedSystemMetadata } = await import('./seed-system-metadata');
+        await seedSystemMetadata();
+    } catch (e: any) {
+        logger.warn('系统表元数据 seed 跳过: ' + (e?.message || e));
+    }
+}

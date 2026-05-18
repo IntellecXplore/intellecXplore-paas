@@ -1,10 +1,10 @@
 app:
-  id: "Elysia-Admin"
-  port: 3000
+  id: "Elysia-Admin-Test"
+  port: 3001
   prefix: "/api"
   baseCacheTime: 300
   forgetPasswordExpiresIn: 600
-  forgetPasswordUrl: "http://192.168.2.112:3006/#/auth/reset-password"
+  forgetPasswordUrl: "http://localhost:3006/#/auth/reset-password"
   maxRequestBodySize: 10485760
   timeout: 30
   maxLoginAttempts: 3
@@ -17,17 +17,17 @@ app:
 jwt:
   accessToken:
     expiresIn: "15m"
-    secret: "elysia-admin-accessToken"
+    secret: "test-access-token-secret"
   refreshToken:
     expiresIn: "7d"
-    secret: "elysia-admin-refreshToken"
+    secret: "test-refresh-token-secret"
 
 redis:
   host: "localhost"
   port: 6379
   password: ""
   username: ""
-  db: 0
+  db: 1
 
 pg:
   host: "localhost"
@@ -35,10 +35,10 @@ pg:
   username: "postgres"
   user: "postgres"
   password: "postgres"
-  database: "elysia-admin"
-  max: 10
-  idle_timeout: 30
-  connect_timeout: 10
+  database: "elysia-admin-test"
+  max: 2
+  idle_timeout: 10
+  connect_timeout: 5
   ssl: false
 
 smtp:
@@ -48,15 +48,15 @@ smtp:
   auth:
     user: ""
     pass: ""
-  pool: true
-  maxConnections: 10
-  maxMessages: 100
+  pool: false
+  maxConnections: 1
+  maxMessages: 1
   rateDelta: 1000
   rateLimit: 5
 
 guard:
-  ipBlacklist: true
-  apiSwitch: true
+  ipBlacklist: false
+  apiSwitch: false
 
 agent:
   provider: "openai"

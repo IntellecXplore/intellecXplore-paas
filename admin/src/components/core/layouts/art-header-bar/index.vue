@@ -109,6 +109,9 @@
           </template>
         </ElDropdown>
 
+        <!-- 租户切换器 -->
+        <ArtTenantSwitcher v-if="shouldShowTenantSwitcher" />
+
         <!-- 通知按钮 -->
         <ArtIconButton
           v-if="shouldShowNotification"
@@ -183,6 +186,7 @@
   import { useCommon } from '@/hooks/core/useCommon'
   import { useHeaderBar } from '@/hooks/core/useHeaderBar'
   import ArtUserMenu from './widget/ArtUserMenu.vue'
+  import ArtTenantSwitcher from './widget/ArtTenantSwitcher.vue'
 
   defineOptions({ name: 'ArtHeaderBar' })
 
@@ -210,6 +214,7 @@
     shouldShowLanguage,
     shouldShowSettings,
     shouldShowThemeToggle,
+    shouldShowTenantSwitcher,
     fastEnterMinWidth: headerBarFastEnterMinWidth
   } = useHeaderBar()
 

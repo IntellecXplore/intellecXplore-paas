@@ -20,6 +20,15 @@
     "url": "https://elysia-admin.top"
   },
   "license": "MIT",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "msgpackr-extract"
+    ],
+    "patchedDependencies": {
+      "memoirist@0.4.0": "patches/memoirist@0.4.0.patch"
+    }
+  },
   "repository": {
     "type": "git",
     "url": "https://gitee.com/nian-qian/elysia-admin"
@@ -34,6 +43,11 @@
     "build:processors": "bun run script/build-processors.ts",
     "db:push": "bun ./script/generate-dbconfig.ts push",
     "db:pull": "bun ./script/generate-dbconfig.ts pull",
+    "test": "bun test test/unit/ test/handler/",
+    "test:watch": "bun test --watch test/unit/ test/handler/",
+    "test:coverage": "bun test --coverage test/unit/ test/handler/",
+    "test:integration": "bun test test/route/",
+    "test:all": "bun test test/unit/ test/handler/ && bun test test/route/",
     "docker:build": "docker build -t hnq1/elysia-admin:latest .",
     "docker:run": "docker run --name elysia-admin -p 3000:3000 elysia-admin:latest",
     "docker:stop": "docker stop elysia-admin",
@@ -41,10 +55,12 @@
     "docker:logs": "docker logs elysia-admin"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "^2.0.47",
     "@bull-board/api": "^6.21.3",
     "@bull-board/elysia": "^6.21.3",
     "@elysiajs/cors": "^1.4.2",
     "@elysiajs/static": "^1.4.10",
+    "ai": "^6.0.180",
     "bullmq": "^5.76.7",
     "croner": "^10.0.1",
     "dayjs": "^1.11.20",

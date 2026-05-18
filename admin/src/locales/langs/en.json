@@ -298,7 +298,8 @@
       "log": "Log Manage",
       "loginLog": "Login Log",
       "operLog": "Oper Log",
-      "storage": "Storage Config"
+      "storage": "Storage Config",
+	      "tenant": "Tenant Management"
     },
     "monitor": {
       "title": "System Monitor",
@@ -342,5 +343,12 @@
     "zebra": "Zebra",
     "border": "Border",
     "headerBackground": "Header BG"
+  },
+  "tenant": {
+    "switchTenant": "Switch Tenant",
+    "current": "Current Tenant",
+    "noTenant": "No Tenant Available",
+    "disabled": "Disabled",
+    "expired": "Expired"
   }
 }

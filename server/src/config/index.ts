@@ -138,6 +138,16 @@ interface IConfig {
     orders: {
         timeout: number;
     },
+    /** Agent 聊天配置 */
+    agent: {
+        provider: string;
+        apiKey: string;
+        apiBase: string;
+        model: string;
+        maxTokens: number;
+        maxToolRounds: number;
+        conversationTTL: number;
+    },
 };
 
 export default config as IConfig;

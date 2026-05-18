@@ -43,8 +43,8 @@ export const headerBarConfig: HeaderBarFeatureConfig = {
     description: '通知中心，显示系统通知和消息'
   },
   chat: {
-    enabled: false,
-    description: '聊天功能，提供实时沟通'
+    enabled: true,
+    description: 'AI 智能助手，提供智能问答和系统操作'
   },
   language: {
     enabled: true,
@@ -57,6 +57,10 @@ export const headerBarConfig: HeaderBarFeatureConfig = {
   themeToggle: {
     enabled: true,
     description: '主题切换功能（明暗主题）'
+  },
+  tenantSwitcher: {
+    enabled: true,
+    description: '租户切换功能，多租户环境下切换当前工作租户'
   }
 }
 

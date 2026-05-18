@@ -167,7 +167,8 @@
     "placeholder": {
       "username": "请输入账号",
       "password": "请输入密码",
-      "slider": "请拖动滑块完成验证"
+      "slider": "请拖动滑块完成验证",
+        "tenantCode": "请输入租户代码（可选，不填使用默认租户）"
     },
     "sliderText": "按住滑块拖动",
     "sliderSuccessText": "验证成功",
@@ -298,7 +299,8 @@
       "log": "日志管理",
       "loginLog": "登陆日志",
       "operLog": "操作日志",
-      "storage": "存储配置"
+      "storage": "存储配置",
+	      "tenant": "租户管理"
     },
     "monitor": {
       "title": "系统监控",
@@ -342,5 +344,12 @@
     "zebra": "斑马纹",
     "border": "边框",
     "headerBackground": "表头背景"
+  },
+  "tenant": {
+    "switchTenant": "切换租户",
+    "current": "当前租户",
+    "noTenant": "暂无可用租户",
+    "disabled": "已禁用",
+    "expired": "已过期"
   }
 }

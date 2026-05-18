@@ -4,7 +4,7 @@ import config from '@/config';
 import { logger } from '@/shared/logger';
 
 // 配置 PostgreSQL 连接池
-const client = postgres({
+export const client = postgres({
     host: config.pg.host,
     port: config.pg.port,
     username: config.pg.username,

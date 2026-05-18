@@ -60,5 +60,14 @@ guard:
   ipBlacklist: true
   apiSwitch: true
 
+agent:
+  provider: "openai"
+  apiKey: ""
+  apiBase: "https://api.deepseek.com"
+  model: "deepseek-v4-pro"
+  maxTokens: 4096
+  maxToolRounds: 5
+  conversationTTL: 86400
+
 orders:
   timeout: 900000
