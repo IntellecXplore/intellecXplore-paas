@@ -10,7 +10,7 @@ import {
     FindAll,
 } from '@/core/database/repository';
 import { monitorJobSchema } from 'database/schema/monitor_job';
-import { inArray } from 'drizzle-orm';
+import { inArray, and, eq } from 'drizzle-orm';
 import { queueManager, schedule, removeSchedule } from '@/infrastructure/queue';
 
 /**
@@ -60,7 +60,7 @@ export async function findList(ctx: Context) {
         } = ctx.query;
         let newStatus = undefined;
         if (status !== undefined) newStatus = status === 'true' ? true : false;
-        const whereCondition = CreateQueryBuilder(monitorJobSchema)
+        const whereCondition = CreateQueryBuilder(monitorJobSchema, (ctx as any)?.tenantId)
             .eq('delFlag', false)
             .like('jobName', jobName)
             .eq('jobCron', jobCron)
@@ -83,7 +83,7 @@ export async function update(ctx: Context) {
     try {
         const data = ctx.body as typeof monitorJobSchema.$inferSelect;
         const jobId = data.jobId;
-        const oldJob = await FindOneByKey(monitorJobSchema, 'jobId', jobId);
+        const oldJob = await FindOneByKey(monitorJobSchema, 'jobId', jobId, (ctx as any)?.tenantId);
         const queue = getCronQueue();
         if (oldJob && data.jobName) {
             const oldJobName = String(oldJob.jobName);
@@ -112,7 +112,11 @@ export async function update(ctx: Context) {
 export async function remote(ctx: Context) {
     try {
         const ids = ctx.params.ids.split(',').map(Number) as number[];
-        const jobs = await FindAll(monitorJobSchema, inArray(monitorJobSchema.jobId, ids));
+        const tenantId = (ctx as any)?.tenantId;
+        const where = tenantId
+            ? and(inArray(monitorJobSchema.jobId, ids), eq(monitorJobSchema.tenantId, tenantId))
+            : inArray(monitorJobSchema.jobId, ids);
+        const jobs = await FindAll(monitorJobSchema, where);
         const queue = getCronQueue();
         if (jobs?.length) {
             for (const job of jobs) {

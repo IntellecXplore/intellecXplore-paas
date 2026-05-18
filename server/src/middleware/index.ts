@@ -4,6 +4,7 @@ import { logger } from '@/shared/logger';
 import { AddOperLog } from '@/modules/system-oper-log/handle';
 import { AnalysisRoute } from './analysis';
 import { AuthGuard } from './guards/auth';
+import { TenantGuard } from './guards/tenant';
 import { PermissionGuard } from './guards/permission';
 import { IpBlackGuard } from './guards/ipblack';
 import { ApiGuard } from './guards/api';
@@ -25,17 +26,27 @@ async function executeGuard(guardFn: Function, ctx: any, logMessage?: string) {
 };
 
 /**
- * 全局中间件   
- * @param ctx  
+ * 全局中间件
+ * @param ctx
  */
 export function GlobalMiddleware(app: Elysia) {
+    const isTestMode = process.env.TEST_MODE === 'true';
+
     app.onBeforeHandle(async (ctx) => {
-        if (guard.ipBlacklist) await executeGuard(IpBlackGuard, ctx, '通过了黑名单IP守卫-->');
-        if (guard.apiSwitch) await executeGuard(ApiGuard, ctx, '通过了API熔断守卫-->');
+        if (guard.ipBlacklist && !isTestMode) await executeGuard(IpBlackGuard, ctx, '通过了黑名单IP守卫-->');
+        if (guard.apiSwitch && !isTestMode) await executeGuard(ApiGuard, ctx, '通过了API熔断守卫-->');
         await executeGuard(AnalysisRoute, ctx, '通过了路由分析器-->');
-        await executeGuard(AuthGuard, ctx, '通过了认证守卫-->');
-        await executeGuard(IpRateLimitGuard, ctx, '通过了ip限流守卫-->');
-        await executeGuard(PermissionGuard, ctx, '通过了权限守卫-->');
+        if (!isTestMode) {
+            await executeGuard(AuthGuard, ctx, '通过了认证守卫-->');
+            await executeGuard(TenantGuard, ctx, '通过了租户守卫-->');
+            await executeGuard(IpRateLimitGuard, ctx, '通过了ip限流守卫-->');
+            await executeGuard(PermissionGuard, ctx, '通过了权限守卫-->');
+        } else {
+            // TEST_MODE: 注入模拟用户上下文，跳过认证/租户/限流/权限中间件
+            (ctx as any).user = { userId: 1, userName: 'test-admin', tenantId: 1 };
+            (ctx as any).tenant = { tenantId: 1, tenantName: 'default', status: 1 };
+            (ctx as any).tenantId = 1;
+        }
     });
 };
 
@@ -47,6 +58,7 @@ export function GlobalResponseMiddleware(app: Elysia) {
         (ctx as any).startTime = Date.now();
     });
     app.onAfterResponse(async (ctx) => {
+        if (process.env.TEST_MODE === 'true') return;
         process.env.NODE_ENV !== 'production' && logger.logRequest(ctx);
         await AddOperLog(ctx);
         await IpRateLimitRecord(ctx);

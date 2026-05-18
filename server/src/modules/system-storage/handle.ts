@@ -1,5 +1,5 @@
 import { Context } from 'elysia';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { BaseResultData } from '@/core/result';
 import {
     InsertOne,
@@ -7,6 +7,7 @@ import {
     CreateQueryBuilder,
     FindPage,
     FindOneByKey,
+    FindAll,
 } from '@/core/database/repository';
 import { ParseDateFields } from '@/types/dto';
 import { RunTransaction } from '@/core/database/transaction';
@@ -34,7 +35,7 @@ export async function findList(ctx: Context) {
             endTime,
             name,
         } = ctx.query;
-        const whereCondition = CreateQueryBuilder(systemStorageSchema)
+        const whereCondition = CreateQueryBuilder(systemStorageSchema, (ctx as any)?.tenantId)
             .eq('delFlag', false)
             .like('name', name)
             .dateRange('createTime', startTime, endTime)
@@ -55,8 +56,11 @@ export async function findList(ctx: Context) {
 export async function generatePresign(ctx: Context) {
     try {
         const { fileName } = ctx.query;
-        const storage = await FindOneByKey(systemStorageSchema, 'status', true);
-        if (!storage) return BaseResultData.fail(404, '未找到可用的存储配置');
+        const tenantId = (ctx as any)?.tenantId;
+        const where = CreateQueryBuilder(systemStorageSchema, tenantId).eq('status', true).eq('delFlag', false).build();
+        const storages = await FindAll(systemStorageSchema, where);
+        if (!storages.length) return BaseResultData.fail(404, '未找到可用的存储配置');
+        const storage = storages[0];
         const { region, endpoint, bucket, accessKey, secretKey } = storage;
         if (!endpoint || !bucket || !accessKey || !secretKey) return BaseResultData.fail(400, '存储配置不完整');
         const config = { region: region || '', endpoint, bucket, accessKey, secretKey, };
@@ -71,11 +75,14 @@ export async function generatePresign(ctx: Context) {
 export async function update(ctx: Context) {
     try {
         const data = ParseDateFields(ctx.body);
+        const tenantId = (ctx as any)?.tenantId;
         await RunTransaction(async (tx) => {
-            if (data?.status) {
-                await tx.update(systemStorageSchema).set({ status: false }).where(eq(systemStorageSchema.delFlag, false));
+            if (data?.status && tenantId) {
+                await tx.update(systemStorageSchema).set({ status: false })
+                    .where(and(eq(systemStorageSchema.delFlag, false), eq(systemStorageSchema.tenantId, tenantId)));
             };
-            await tx.update(systemStorageSchema).set(data).where(eq(systemStorageSchema.storageId, data.storageId));
+            await tx.update(systemStorageSchema).set(data)
+                .where(and(eq(systemStorageSchema.storageId, data.storageId), eq(systemStorageSchema.tenantId, tenantId!)));
         });
         return BaseResultData.ok();
     }

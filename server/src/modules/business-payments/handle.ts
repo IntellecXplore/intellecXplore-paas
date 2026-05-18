@@ -42,9 +42,10 @@ export async function payOrder(ctx: Context) {
          * 注意：所有涉及金额的计算和状态的流转，必须在数据库事务中完成，防止并发导致的数据不一致。
          */
         const userId = (ctx as any)?.user?.userId;
+        const tenantId = (ctx as any)?.tenantId;
         const { orderNo, paymentMethod, platform } = ctx.body as { orderNo: string; paymentMethod: PaymentChannel; platform: PaymentPlatform };
         // 订单信息
-        const orderInfo = await FindOneByKey(businessOrdersSchema, 'orderNo', orderNo);
+        const orderInfo = await FindOneByKey(businessOrdersSchema, 'orderNo', orderNo, tenantId);
         if (!orderInfo) return BaseResultData.fail(404, '订单不存在');
         if (orderInfo.delFlag) return BaseResultData.fail(404, '订单不存在');
         if (userId != orderInfo.createBy) return BaseResultData.fail(403, '您没有权限支付该订单');
@@ -66,12 +67,12 @@ export async function payOrder(ctx: Context) {
                 return BaseResultData.fail(400, '订单已退款');
         };
         // 商家信息
-        const merchantInfo = await FindOneByKey(businessMerchantSchema, 'id', orderInfo.merchantId);
+        const merchantInfo = await FindOneByKey(businessMerchantSchema, 'id', orderInfo.merchantId, tenantId);
         if (!merchantInfo) return BaseResultData.fail(404, '商家不存在');
         if (merchantInfo.delFlag) return BaseResultData.fail(404, '商家不存在');
         if (!merchantInfo.status) return BaseResultData.fail(400, '商家已禁用');
         // 商家配置
-        const where = CreateQueryBuilder(businessMerchantConfigsSchema)
+        const where = CreateQueryBuilder(businessMerchantConfigsSchema, tenantId)
             .eq('delFlag', false)
             .eq('status', true)
             .eq('channel', paymentMethod)
@@ -87,7 +88,7 @@ export async function payOrder(ctx: Context) {
          * 判断属于哪种支付，再调用对应的请求接口
          */
         const { notifyUrl, returnUrl } = merchantConfig.config as any;
-        const payment = await FindOneByKey(businessPaymentsSchema, 'orderNo', orderInfo.orderNo);
+        const payment = await FindOneByKey(businessPaymentsSchema, 'orderNo', orderInfo.orderNo, tenantId);
         const goodsList = ((orderInfo.extra as any)?.products || []).map((item: any) => ({
             goods_id: item.productId,
             goods_name: item.productName || '',
@@ -113,7 +114,7 @@ export async function payOrder(ctx: Context) {
                 // 待支付
                 await pg.update(businessPaymentsSchema)
                     .set({ paymentMethod, platform, updateBy: userId, updateTime: new Date() })
-                    .where(eq(businessPaymentsSchema.orderNo, orderInfo.orderNo));
+                    .where(and(eq(businessPaymentsSchema.orderNo, orderInfo.orderNo), eq(businessPaymentsSchema.tenantId, tenantId)));
             };
             switch (orderInfo.status) {
                 case '1':
@@ -129,7 +130,7 @@ export async function payOrder(ctx: Context) {
         } else {
             await InsertOne(
                 businessPaymentsSchema,
-                null,
+                ctx,
                 {
                     orderId: orderInfo.id,
                     orderNo: orderInfo.orderNo,
@@ -174,6 +175,7 @@ export async function payOrderNotify(ctx: Context) {
         if (paymentNo) {
             const payment = await FindOneByKey(businessPaymentsSchema, 'paymentNo', paymentNo);
             if (payment && !payment?.delFlag && payment?.status === '0' && payment.merchantConfigId && payment.paymentMethod) {
+                const tenantId = payment.tenantId;
                 let thirdTradeNo = ''; // 第三方交易号
                 let status = '2'; // 订单状态 （默认失败）
                 let amount = 0; // 实付金额
@@ -183,6 +185,7 @@ export async function payOrderNotify(ctx: Context) {
                         eq(businessMerchantConfigsSchema.channel, payment.paymentMethod),
                         eq(businessMerchantConfigsSchema.status, true),
                         eq(businessMerchantConfigsSchema.delFlag, false),
+                        eq(businessMerchantConfigsSchema.tenantId, tenantId),
                     )
                 );
                 const merchantConfig = configArr[0] || null;
@@ -212,7 +215,7 @@ export async function payOrderNotify(ctx: Context) {
                                         extra: safeExtra,
                                         updateTime: new Date(),
                                     })
-                                    .where(eq(businessPaymentsSchema.paymentNo, paymentNo));
+                                    .where(and(eq(businessPaymentsSchema.paymentNo, paymentNo), eq(businessPaymentsSchema.tenantId, tenantId)));
                                 await tx.update(businessOrdersSchema)
                                     .set({ status: '1', updateTime: new Date() })
                                     .where(
@@ -220,6 +223,7 @@ export async function payOrderNotify(ctx: Context) {
                                             eq(businessOrdersSchema.orderNo, payment.orderNo),
                                             eq(businessOrdersSchema.status, '0'),
                                             eq(businessOrdersSchema.delFlag, false),
+                                            eq(businessOrdersSchema.tenantId, tenantId),
                                         )
                                     );
                             }

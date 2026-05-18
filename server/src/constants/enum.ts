@@ -49,6 +49,14 @@ export const CacheEnum = {
      * 接口ip限流
      */
     IP_RATE_LIMIT: `${config.app.id}:ipRateLimit:`,
+    /**
+     * Agent 聊天会话历史
+     */
+    AGENT_CONVERSATION: `${config.app.id}:agentConversation:`,
+    /**
+     * 租户信息缓存
+     */
+    TENANT_INFO: `${config.app.id}:tenantInfo:`,
 };
 
 /**

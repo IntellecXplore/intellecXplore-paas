@@ -7,6 +7,11 @@ import pg from '@/core/database/pg';
 // 导出 db 实例供直接使用
 export const db = pg;
 
+/** 从 ctx 中提取 tenantId，用于 Repository 自动作用域 */
+function getTenantIdFromCtx(ctx: Context | null | undefined): number | undefined {
+    return (ctx as any)?.tenantId ?? undefined;
+};
+
 type InferInsertModel<T extends PgTable> = T extends PgTable<infer Config extends TableConfig>
     ? Config['columns'] extends infer Columns
     ? {
@@ -60,6 +65,9 @@ export async function InsertOne<T extends PgTable>(
     } else {
         if (customData) data = customData;
     };
+    // 自动注入租户ID
+    const tenantId = getTenantIdFromCtx(ctx);
+    if (tenantId != null && (schema as any).tenantId) data.tenantId = tenantId;
     return await pg.insert(schema).values(data);
 };
 
@@ -84,6 +92,9 @@ export async function InsertOneAndRes<T extends PgTable>(
     } else {
         if (customData) data = customData;
     };
+    // 自动注入租户ID
+    const tenantId = getTenantIdFromCtx(ctx);
+    if (tenantId != null && (schema as any).tenantId) data.tenantId = tenantId;
     const result = await pg.insert(schema).values(data).returning();
     return result[0];
 };
@@ -106,6 +117,9 @@ export async function InsertMany<T extends PgTable>(
         const createBy = (ctx as any)?.user?.userId || null;
         if (keyColumn && createBy) data = data.map(item => ({ ...item, createBy }));
     };
+    // 自动注入租户ID
+    const tenantId = getTenantIdFromCtx(ctx);
+    if (tenantId != null && (schema as any).tenantId) data = data.map(item => ({ ...item, tenantId }));
     return await pg.insert(schema).values(data);
 };
 
@@ -119,11 +133,16 @@ export async function InsertMany<T extends PgTable>(
 export async function FindOneByKey<T extends PgTable>(
     schema: T,
     keyColumnName: string,
-    value: any
+    value: any,
+    tenantId?: number
 ): Promise<InferSelectModel<T> | null> {
     const keyColumn = (schema as any)[keyColumnName];
     if (!keyColumn) throw new Error(`Column "${keyColumnName}" not found in schema`);
-    const data = await pg.select().from(schema as any).where(eq(keyColumn, value));
+    const conditions: SQL[] = [eq(keyColumn, value)];
+    if (tenantId != null && (schema as any).tenantId) {
+        conditions.push(eq((schema as any).tenantId, tenantId));
+    }
+    const data = await pg.select().from(schema as any).where(and(...conditions));
     return data.length > 0 ? (data[0] as InferSelectModel<T>) : null;
 };
 
@@ -194,7 +213,13 @@ export async function UpdateByKey<T extends PgTable>(
     if (keyValue === undefined || keyValue === null) throw new Error(`Key value for "${keyColumnName}" is required in data`);
     const updateTimeColumn = (schema as any)['updateTime'];
     if (updateTimeColumn) data.updateTime = new Date();
-    return await pg.update(schema).set(data).where(eq(keyColumn, keyValue));
+    // 自动添加租户过滤
+    const whereConds: SQL[] = [eq(keyColumn, keyValue)];
+    const tenantId = getTenantIdFromCtx(ctx);
+    if (tenantId != null && (schema as any).tenantId) {
+        whereConds.push(eq((schema as any).tenantId, tenantId));
+    }
+    return await pg.update(schema).set(data).where(and(...whereConds));
 };
 
 /**
@@ -226,7 +251,13 @@ export async function UpdateByKeyAndRes<T extends PgTable>(
     if (keyValue === undefined || keyValue === null) throw new Error(`Key value for "${keyColumnName}" is required in data`);
     const updateTimeColumn = (schema as any)['updateTime'];
     if (updateTimeColumn) data.updateTime = new Date();
-    const result = await pg.update(schema).set(data).where(eq(keyColumn, keyValue)).returning();
+    // 自动添加租户过滤
+    const whereConds: SQL[] = [eq(keyColumn, keyValue)];
+    const tenantId = getTenantIdFromCtx(ctx);
+    if (tenantId != null && (schema as any).tenantId) {
+        whereConds.push(eq((schema as any).tenantId, tenantId));
+    }
+    const result = await pg.update(schema).set(data).where(and(...whereConds)).returning();
     return result[0];
 };
 
@@ -263,7 +294,13 @@ export async function SoftDeleteByKeys<T extends PgTable>(
     };
     const updateTimeColumn = (schema as any)['updateTime'];
     if (updateTimeColumn) data.updateTime = new Date();
-    return await pg.update(schema).set(data).where(inArray(keyColumn, ids));
+    // 自动添加租户过滤
+    const whereConds: SQL[] = [inArray(keyColumn, ids)];
+    const tenantId = getTenantIdFromCtx(ctx);
+    if (tenantId != null && (schema as any).tenantId) {
+        whereConds.push(eq((schema as any).tenantId, tenantId));
+    }
+    return await pg.update(schema).set(data).where(and(...whereConds));
 };
 
 /**
@@ -383,8 +420,11 @@ export class QueryBuilder<T extends PgTable = any> {
     private schema?: T;
     private joinConfigs: JoinConfig<T, any>[] = [];
 
-    constructor(schema?: T) {
+    constructor(schema?: T, tenantId?: number) {
         this.schema = schema;
+        if (tenantId != null && (schema as any)?.tenantId) {
+            this.conditions.push(eq((schema as any).tenantId, tenantId));
+        }
     };
 
     /**
@@ -705,8 +745,8 @@ export class QueryBuilder<T extends PgTable = any> {
  * 创建查询条件构建器实例
  * @param schema - 可选的表 schema，传入后可以使用字符串字段名
  */
-export function CreateQueryBuilder<T extends PgTable>(schema?: T): QueryBuilder<T> {
-    return new QueryBuilder(schema);
+export function CreateQueryBuilder<T extends PgTable>(schema?: T, tenantId?: number): QueryBuilder<T> {
+    return new QueryBuilder(schema, tenantId);
 };
 
 /**

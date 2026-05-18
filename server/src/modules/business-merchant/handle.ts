@@ -34,7 +34,7 @@ export async function createConfig(ctx: Context) {
 export async function findOneConfig(ctx: Context) {
     try {
         const id = ctx.params.id;
-        const res = await FindOneByKey(businessMerchantConfigsSchema, 'id', id);
+        const res = await FindOneByKey(businessMerchantConfigsSchema, 'id', id, (ctx as any)?.tenantId);
         return BaseResultData.ok(res);
     }
     catch (error) {
@@ -54,7 +54,7 @@ export async function findList(ctx: Context) {
             name,
             status,
         } = ctx.query;
-        const whereCondition = CreateQueryBuilder(businessMerchantSchema)
+        const whereCondition = CreateQueryBuilder(businessMerchantSchema, (ctx as any)?.tenantId)
             .eq('delFlag', false)
             .like('name', name)
             .eq('status', status)

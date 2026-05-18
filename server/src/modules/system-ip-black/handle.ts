@@ -1,5 +1,5 @@
 import { Context } from 'elysia';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import config from '@/config';
 import { BaseResultData } from '@/core/result';
 import {
@@ -19,6 +19,7 @@ export async function create(ctx: Context) {
     try {
         const data = ctx.body as typeof systemIpBlackSchema.$inferInsert;
         if (data.ipAddress && !IsIpAddress(data.ipAddress)) return BaseResultData.fail(400, 'IP地址格式错误');
+        data.tenantId = (ctx as any)?.tenantId ?? 1;
         await InsertIpBlack(data);
         return BaseResultData.ok();
     }
@@ -37,7 +38,7 @@ export async function findAll(ctx: Context) {
         if (status) {
             bStatus = status === 'true' ? true : false;
         };
-        const where = CreateQueryBuilder(systemIpBlackSchema)
+        const where = CreateQueryBuilder(systemIpBlackSchema, (ctx as any)?.tenantId)
             .eq('delFlag', false)
             .like('ipAddress', ipAddress)
             .eq('status', bStatus)
@@ -94,14 +95,16 @@ export async function GetCacheIpBlackList() {
 export async function InsertIpBlack(data: typeof systemIpBlackSchema.$inferInsert) {
     try {
         await RunTransaction(async (tx) => {
-            const ipList = await tx.select().from(systemIpBlackSchema).where(eq(systemIpBlackSchema.ipAddress, data.ipAddress));
+            const tenantId = data.tenantId ?? 1;
+            const ipList = await tx.select().from(systemIpBlackSchema).where(
+                and(eq(systemIpBlackSchema.ipAddress, data.ipAddress), eq(systemIpBlackSchema.tenantId, tenantId)));
             const ipInfo = ipList[0] || null;
             if (ipInfo) {
                 const res = await tx.update(systemIpBlackSchema).set({
                     status: true,
                     remark: data.remark,
                     updateTime: new Date()
-                }).where(eq(systemIpBlackSchema.ipBlackId, ipInfo.ipBlackId)).returning();
+                }).where(and(eq(systemIpBlackSchema.ipBlackId, ipInfo.ipBlackId), eq(systemIpBlackSchema.tenantId, tenantId))).returning();
                 if (config.guard.ipBlacklist) await CacheUpdate(CacheEnum.IP_BLACK, 'ipBlackId', res[0]);
                 return;
             };

@@ -12,9 +12,9 @@ import { SanitizeObject } from '@/core/function';
 import { logger } from '@/shared/logger';
 import { SensitiveFields } from '@/constants/base';
 
-export async function create(data: typeof systemOperLogSchema.$inferInsert) {
+export async function create(ctx: Context | null, data: typeof systemOperLogSchema.$inferInsert) {
     try {
-        await InsertOne(systemOperLogSchema, null, data);
+        await InsertOne(systemOperLogSchema, ctx, data);
     } catch (error) {
         logger.error('插入操作日志失败' + error);
     }
@@ -30,7 +30,7 @@ export async function findList(ctx: Context) {
             startTime,
             endTime,
         } = ctx.query;
-        const whereCondition = CreateQueryBuilder(systemOperLogSchema)
+        const whereCondition = CreateQueryBuilder(systemOperLogSchema, (ctx as any)?.tenantId)
             .eq('delFlag', false)
             .dateRange('createTime', startTime, endTime)
             .build();
@@ -89,5 +89,5 @@ export async function AddOperLog(ctx: Context) {
         operParam,
         jsonResult,
     };
-    create(data);
+    create(ctx, data);
 };

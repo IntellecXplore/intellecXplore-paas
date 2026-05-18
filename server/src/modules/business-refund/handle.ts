@@ -38,16 +38,17 @@ import { businessPaymentsSchema } from '@database/schema/business_payments';
 export async function create(ctx: Context) {
     try {
         const userId = (ctx as any)?.user?.userId;
+        const tenantId = (ctx as any)?.tenantId;
         const { orderId, paymentId, amount, reason } = ctx.body as any;
         // 1. 查询订单信息
-        const order = await FindOneByKey(businessOrdersSchema, 'id', orderId);
+        const order = await FindOneByKey(businessOrdersSchema, 'id', orderId, tenantId);
         if (!order) return BaseResultData.fail(400, '订单不存在');
         // 2. 验证订单所属用户
         if (order.userId !== userId) return BaseResultData.fail(403, '无权操作此订单');
         // 3. 验证订单状态（只有已支付的订单才能退款）
         if (order.status !== '1') return BaseResultData.fail(400, '订单状态不支持退款');
         // 4. 查询支付记录
-        const payment = await FindOneByKey(businessPaymentsSchema, 'id', paymentId);
+        const payment = await FindOneByKey(businessPaymentsSchema, 'id', paymentId, tenantId);
         if (!payment) return BaseResultData.fail(400, '支付记录不存在');
         // 5. 验证支付记录与订单的关联
         if (payment.orderId !== orderId) return BaseResultData.fail(400, '支付记录与订单不匹配');
@@ -56,7 +57,7 @@ export async function create(ctx: Context) {
         // 7. 验证退款金额
         if (amount <= 0 || amount > Number(payment.amount)) return BaseResultData.fail(400, '退款金额不合法');
         // 8. 检查是否已存在退款申请
-        const existingRefund = await CreateQueryBuilder(businessRefundSchema)
+        const existingRefund = await CreateQueryBuilder(businessRefundSchema, tenantId)
             .eq('orderId', orderId)
             .eq('paymentId', paymentId)
             .eq('delFlag', false)
@@ -91,7 +92,7 @@ export async function create(ctx: Context) {
                 status: '4', // 4-已退款
                 updateBy: userId,
                 updateTime: new Date(),
-            }).where(eq(businessOrdersSchema.id, orderId));
+            }).where(and(eq(businessOrdersSchema.id, orderId), eq(businessOrdersSchema.tenantId, tenantId)));
         });
         logger.info(`用户 ${userId} 创建退款申请，退款单号：${refundNo}`);
         return BaseResultData.ok(refundNo);
@@ -103,9 +104,10 @@ export async function create(ctx: Context) {
 export async function update(ctx: Context) {
     try {
         const updateBy = (ctx as any)?.user?.userId || null;
+        const tenantId = (ctx as any)?.tenantId;
         const { id, status, remark } = ctx.body as any;
         // 查询退款记录
-        const refund = await FindOneByKey(businessRefundSchema, 'id', id);
+        const refund = await FindOneByKey(businessRefundSchema, 'id', id, tenantId);
         if (!refund) return BaseResultData.fail(404, '退款记录不存在');
         // 只有退款中状态才能修改
         if (refund.status !== '0') return BaseResultData.fail(400, '当前退款状态不允许修改');
@@ -121,14 +123,14 @@ export async function update(ctx: Context) {
                     processTime: new Date(),
                     processBy: updateBy,
                 },
-            }).where(eq(businessRefundSchema.id, id));
+            }).where(and(eq(businessRefundSchema.id, id), eq(businessRefundSchema.tenantId, tenantId)));
             if (status === '1') {
                 // 1-成功，退款成功后订单保持已退款状态
                 await tx.update(businessOrdersSchema).set({
                     status: '4', // 4-已退款
                     updateBy,
                     updateTime: new Date(),
-                }).where(eq(businessOrdersSchema.id, refund.orderId));
+                }).where(and(eq(businessOrdersSchema.id, refund.orderId), eq(businessOrdersSchema.tenantId, tenantId)));
                 // TODO: 这里需要调用第三方支付平台的退款接口
                 // 实际项目中需要根据支付平台调用相应的退款API
                 logger.info(`退款成功，退款单号：${refund.refundNo}，需要调用第三方退款接口`);
@@ -138,7 +140,7 @@ export async function update(ctx: Context) {
                     status: '1', // 1-已支付
                     updateBy,
                     updateTime: new Date(),
-                }).where(eq(businessOrdersSchema.id, refund.orderId));
+                }).where(and(eq(businessOrdersSchema.id, refund.orderId), eq(businessOrdersSchema.tenantId, tenantId)));
                 logger.info(`退款失败，退款单号：${refund.refundNo}`);
             };
         });
@@ -169,6 +171,7 @@ export async function handleRefundCallback(data: {
             );
             const refund = refundList[0] || null;
             if (!refund) throw new Error('退款记录不存在');
+            const tenantId = refund.tenantId;
             const refundExtra = typeof refund.extra === 'object' ? refund.extra : {};
             await tx.update(businessRefundSchema).set({
                 status,
@@ -179,12 +182,12 @@ export async function handleRefundCallback(data: {
                     callbackTime: new Date(),
                 },
                 updateTime: new Date(),
-            }).where(eq(businessRefundSchema.id, refund.id));
+            }).where(and(eq(businessRefundSchema.id, refund.id), eq(businessRefundSchema.tenantId, tenantId)));
             if (status === '1') {
                 await tx.update(businessOrdersSchema).set({
                     status: '4', // 4-已退款
                     updateTime: new Date(),
-                }).where(eq(businessOrdersSchema.id, refund.orderId));
+                }).where(and(eq(businessOrdersSchema.id, refund.orderId), eq(businessOrdersSchema.tenantId, tenantId)));
             }
         });
         logger.info(`退款回调处理成功，退款单号：${refundNo}，第三方退款单号：${thirdRefundNo}`);

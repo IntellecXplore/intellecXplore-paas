@@ -91,7 +91,7 @@ export async function create(ctx: Context) {
          * 注意：校验逻辑作者并没有实现，需要根据实际情况自己实现。
          */
 
-        const orderNo = await generateOrder(mockData);
+        const orderNo = await generateOrder(mockData, ctx);
         return BaseResultData.ok(orderNo);
     }
     catch (error) {
@@ -111,7 +111,8 @@ export async function findList(ctx: Context) {
             orderNo,
             status,
         } = ctx.query;
-        const whereCondition = CreateQueryBuilder(businessOrdersSchema)
+        const tenantId = (ctx as any)?.tenantId;
+        const whereCondition = CreateQueryBuilder(businessOrdersSchema, tenantId)
             .eq('delFlag', false)
             .eq('orderNo', orderNo)
             .eq('status', status)
@@ -126,12 +127,12 @@ export async function findList(ctx: Context) {
         if (res.list.length > 0) {
             const orderNos = res.list.map((o: any) => o.orderNo);
             const orderIds = res.list.map((o: any) => o.id);
-            const paymentWhere = CreateQueryBuilder(businessPaymentsSchema)
+            const paymentWhere = CreateQueryBuilder(businessPaymentsSchema, tenantId)
                 .in('orderNo', orderNos)
                 .eq('delFlag', false)
                 .build();
             const payments = await FindAll(businessPaymentsSchema, paymentWhere);
-            const refundWhere = CreateQueryBuilder(businessRefundSchema)
+            const refundWhere = CreateQueryBuilder(businessRefundSchema, tenantId)
                 .in('orderId', orderIds)
                 .eq('delFlag', false)
                 .build();
@@ -157,12 +158,13 @@ export async function findList(ctx: Context) {
     }
 };
 
-export async function findStatusStats(_ctx: Context) {
+export async function findStatusStats(ctx: Context) {
     try {
+        const tenantId = (ctx as any)?.tenantId;
         const rows = await pg
             .select({ status: businessOrdersSchema.status, cnt: count(), })
             .from(businessOrdersSchema)
-            .where(eq(businessOrdersSchema.delFlag, false))
+            .where(and(eq(businessOrdersSchema.delFlag, false), eq(businessOrdersSchema.tenantId, tenantId)))
             .groupBy(businessOrdersSchema.status);
         const byStatus: Record<string, number> = {};
         for (const r of rows) {
@@ -179,14 +181,15 @@ export async function findStatusStats(_ctx: Context) {
 export async function findOne(ctx: Context) {
     try {
         const id = ctx.params.id;
-        const order = await FindOneByKey(businessOrdersSchema, 'id', id);
+        const tenantId = (ctx as any)?.tenantId;
+        const order = await FindOneByKey(businessOrdersSchema, 'id', id, tenantId);
         if (!order) return BaseResultData.fail(404);
-        const paymentWhere = CreateQueryBuilder(businessPaymentsSchema)
+        const paymentWhere = CreateQueryBuilder(businessPaymentsSchema, tenantId)
             .eq('orderNo', order.orderNo)
             .eq('delFlag', false)
             .build();
         const payments = await FindAll(businessPaymentsSchema, paymentWhere);
-        const refundWhere = CreateQueryBuilder(businessRefundSchema)
+        const refundWhere = CreateQueryBuilder(businessRefundSchema, tenantId)
             .eq('orderId', order.id)
             .eq('delFlag', false)
             .build();
@@ -204,7 +207,7 @@ export async function update(ctx: Context) {
     try {
         const updateBy = (ctx as any)?.user?.userId || null;
         const data = ctx.body as typeof businessOrdersSchema.$inferSelect;
-        await UpdateByKey(businessOrdersSchema, 'id', null, {
+        await UpdateByKey(businessOrdersSchema, 'id', ctx, {
             id: data.id,
             remark: data.remark,
             updateBy,
@@ -227,7 +230,7 @@ async function generateOrder(data: {
     amount: number;
     currency?: string;
     extra?: any;
-}): Promise<string> {
+}, ctx?: Context): Promise<string> {
     let orderNo = GenerateUUID();
     const { timeout } = config.orders;
     if (orderNo.length > 64) orderNo = orderNo.substring(0, 64);
@@ -254,7 +257,7 @@ async function generateOrder(data: {
     };
     try {
         // 使用事务，创建订单的同时，减库存 （这里只模拟订单创建）
-        await InsertOne(businessOrdersSchema, null, order);
+        await InsertOne(businessOrdersSchema, ctx, order);
         const queue = getFlowBufferQueue();
         await queue.add('订单超时处理', { orderNo }, { delay: timeout });
         return orderNo;
@@ -270,12 +273,15 @@ export async function OrderTimeoutHandle(order: { orderNo: string }) {
     try {
         if (!order.orderNo) return;
         await RunTransaction(async (tx) => {
+            const orderRecord = await tx.select({ tenantId: businessOrdersSchema.tenantId }).from(businessOrdersSchema).where(eq(businessOrdersSchema.orderNo, order.orderNo)).limit(1);
+            const tenantId = orderRecord[0]?.tenantId;
             // 订单状态字典：system_orders_status
             await tx.update(businessOrdersSchema).set({ status: '3' }).where(
                 and(
                     eq(businessOrdersSchema.orderNo, order.orderNo),
                     eq(businessOrdersSchema.status, '0'),
                     eq(businessOrdersSchema.delFlag, false),
+                    eq(businessOrdersSchema.tenantId, tenantId),
                 )
             );
             // 订单支付状态：system_pay_status
@@ -284,6 +290,7 @@ export async function OrderTimeoutHandle(order: { orderNo: string }) {
                     eq(businessPaymentsSchema.orderNo, order.orderNo),
                     eq(businessPaymentsSchema.status, '0'),
                     eq(businessPaymentsSchema.delFlag, false),
+                    eq(businessPaymentsSchema.tenantId, tenantId),
                 )
             );
         });

@@ -81,7 +81,7 @@ export async function findListType(ctx: Context) {
             dictName,
             dictType,
         } = ctx.query;
-        const whereCondition = CreateQueryBuilder(systemDictTypeSchema)
+        const whereCondition = CreateQueryBuilder(systemDictTypeSchema, (ctx as any)?.tenantId)
             .eq('delFlag', false)
             .like('dictName', dictName)
             .like('dictType', dictType)
@@ -112,7 +112,7 @@ export async function findListData(ctx: Context) {
             dictLabel,
             dictType,
         } = ctx.query;
-        const whereCondition = CreateQueryBuilder(systemDictDataSchema)
+        const whereCondition = CreateQueryBuilder(systemDictDataSchema, (ctx as any)?.tenantId)
             .eq('delFlag', false)
             .like('dictLabel', dictLabel)
             .like('dictType', dictType)
@@ -134,7 +134,7 @@ export async function findListData(ctx: Context) {
 export async function findOneType(ctx: Context) {
     try {
         const id = Number(ctx.params.id);
-        const data = await FindOneByKey(systemDictTypeSchema, 'dictId', id);
+        const data = await FindOneByKey(systemDictTypeSchema, 'dictId', id, (ctx as any)?.tenantId);
         if (!data || data.delFlag) return BaseResultData.fail(404);
         return BaseResultData.ok(data);
     }

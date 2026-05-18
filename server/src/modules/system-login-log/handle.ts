@@ -11,9 +11,9 @@ import { logger } from '@/shared/logger';
 
 
 // 插入登陆日志
-export async function create(data: typeof systemLoginLogSchema.$inferInsert) {
+export async function create(ctx: Context | null, data: typeof systemLoginLogSchema.$inferInsert) {
     try {
-        await InsertOne(systemLoginLogSchema, null, data);
+        await InsertOne(systemLoginLogSchema, ctx, data);
     } catch (error) {
         logger.error('插入登陆日志失败' + error);
     }
@@ -29,7 +29,7 @@ export async function findList(ctx: Context) {
             startTime,
             endTime,
         } = ctx.query;
-        const whereCondition = CreateQueryBuilder(systemLoginLogSchema)
+        const whereCondition = CreateQueryBuilder(systemLoginLogSchema, (ctx as any)?.tenantId)
             .eq('delFlag', false)
             .dateRange('createTime', startTime, endTime)
             .build();
@@ -65,7 +65,7 @@ export async function AddLoginLog(ctx: Context) {
         if (!clientInfo) return;
         const user = (ctx as any)?.user || {};
         const res = (ctx as any)?.response || {};
-        create({
+        create(ctx, {
             ...clientInfo,
             loginType: 'admin', message: res?.msg,
             status: res.code === 200,
