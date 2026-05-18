@@ -1,6 +1,24 @@
 import { t } from 'elysia';
 import { BaseResultDto } from '@/types/dto';
-import { AddLoginLog } from '@/modules/system-login-log/handle';
+import { InsertOne } from '@/core/database/repository';
+import { systemLoginLogSchema } from '@database/schema/system_login_log';
+import { logger } from '@/shared/logger';
+
+async function AddLoginLog(ctx: any) {
+    try {
+        const clientInfo = ctx.clientInfo;
+        if (!clientInfo) return;
+        const user = ctx?.user || {};
+        const res = ctx?.response || {};
+        await InsertOne(systemLoginLogSchema, null, {
+            ...clientInfo,
+            loginType: 'admin', message: res?.msg,
+            status: res.code === 200,
+            createBy: user.userId,
+            loginName: user.username || '',
+        });
+    } catch (error) { logger.error('添加登陆日志失败:' + error); }
+}
 
 const baseAuthDto = t.Object({
     accessToken: t.String({ description: '访问令牌' }),
@@ -49,6 +67,13 @@ export const ResetPasswordDto = {
 export const RefreshTokenDto = {
     body: t.Object({
         refreshToken: t.String({ error: '刷新令牌格式错误', minLength: 5 }),
+    }),
+    ...BaseResultDto(baseAuthDto),
+};
+
+export const SwitchTenantDto = {
+    body: t.Object({
+        tenantId: t.Number({ error: '租户ID格式错误' }),
     }),
     ...BaseResultDto(baseAuthDto),
 };

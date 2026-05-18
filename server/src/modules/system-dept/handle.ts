@@ -28,7 +28,7 @@ export async function findTree(ctx: Context) {
         const {
             deptName,
         } = ctx.query;
-        const where = CreateQueryBuilder(systemDeptSchema)
+        const where = CreateQueryBuilder(systemDeptSchema, (ctx as any)?.tenantId)
             .eq('delFlag', false)
             .like('deptName', deptName)
             .build();
@@ -47,12 +47,13 @@ export async function findTree(ctx: Context) {
     }
 };
 
-export async function findOptions() {
+export async function findOptions(ctx: Context) {
     try {
+        const tenantId = (ctx as any)?.tenantId ?? 0;
         const data = await WithCache(
-            CacheEnum.BASE_OPTIONS + 'systemDeptTree',
+            CacheEnum.BASE_OPTIONS + 'systemDeptTree:' + tenantId,
             async () => {
-                const where = CreateQueryBuilder(systemDeptSchema)
+                const where = CreateQueryBuilder(systemDeptSchema, tenantId)
                     .eq('delFlag', false)
                     .build();
                 const list = await FindAll(systemDeptSchema, where);
@@ -94,6 +95,6 @@ export async function remove(ctx: Context) {
 };
 
 // 根据部门ID查询部门信息
-export async function GetDeptInfoById(deptId: number) {
-    return await FindOneByKey(systemDeptSchema, 'deptId', deptId);
+export async function GetDeptInfoById(deptId: number, tenantId?: number) {
+    return await FindOneByKey(systemDeptSchema, 'deptId', deptId, tenantId);
 };

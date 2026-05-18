@@ -15,12 +15,23 @@ declare namespace Api {
             password: string
         }
 
+        /** 租户信息 */
+        interface TenantInfo {
+            tenantId: number
+            tenantName: string
+            tenantCode: string
+            status: boolean
+            isDefault: boolean
+        }
+
         /** 登录响应 */
         interface LoginResponse {
             accessToken: string
             refreshToken: string
             accessExpiresIn: number
             refreshExpiresIn: number
+            currentTenantId?: number
+            tenants?: TenantInfo[]
         }
 
         /** 用户信息 */
@@ -31,6 +42,8 @@ declare namespace Api {
             username: string
             email: string
             avatar?: string
+            tenantId?: number
+            tenants?: TenantInfo[]
         }
 
         /** 注册参数 */

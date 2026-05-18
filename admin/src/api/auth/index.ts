@@ -72,3 +72,18 @@ export function fetchLogout() {
     url: '/api/auth/logout',
   })
 }
+
+/** 获取用户可访问的租户列表 */
+export function fetchTenantList() {
+  return request.get<Api.Auth.TenantInfo[]>({
+    url: '/api/auth/tenants',
+  })
+}
+
+/** 切换到指定租户 */
+export function fetchSwitchTenant(tenantId: number) {
+  return request.post<Api.Auth.LoginResponse>({
+    url: '/api/auth/switch-tenant',
+    params: { tenantId },
+  })
+}

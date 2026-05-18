@@ -14,11 +14,28 @@ import { logger } from '@/shared/logger';
 import { WithCache } from '@/core/cache';
 import { CacheEnum } from '@/constants/enum';
 import { RunTransaction } from '@/core/database/transaction';
-import { RefreshRoutes } from '@/modules/system-menu/handle';
-import { Keys, Get, Set as RedisSet } from '@/core/database/redis';
+import { Keys, Get, Set as RedisSet, Del as RedisDel } from '@/core/database/redis';
 import { systemUserRoleSchema } from '@database/schema/system_user';
-import { GetMenuPermissionByRoleIds } from '@/modules/system-menu/handle';
+import { systemMenuBtnSchema } from '@database/schema/system_menu';
 import { systemRoleSchema, systemRoleMenuSchema } from '@database/schema/system_role';
+
+/** 内联：根据角色IDS获取菜单权限（消除跨模块导入） */
+async function GetMenuPermissionByRoleIds(roleIds: number[]): Promise<string[]> {
+    try {
+        const roleMenuWhere = CreateQueryBuilder(systemRoleMenuSchema).in('roleId', roleIds).build();
+        const roleMenu = await FindAll(systemRoleMenuSchema, roleMenuWhere);
+        const menuBtnIds = new Set(roleMenu.map((item: any) => item.menuBtnId).filter((id: any) => id !== null));
+        if (menuBtnIds.size === 0) return [];
+        const menuBtnWhere = CreateQueryBuilder(systemMenuBtnSchema).in('btnId', [...menuBtnIds]).build();
+        const menuBtns = await FindAll(systemMenuBtnSchema, menuBtnWhere);
+        const permission = new Set(menuBtns.map((item: any) => item.permission).filter((per: any) => per !== null));
+        if (permission.size) return [...permission] as string[];
+        return [];
+    } catch (error) {
+        logger.error('根据角色IDS获取菜单权限失败:' + error);
+        return [];
+    }
+}
 
 export async function create(ctx: Context) {
     try {
@@ -47,7 +64,7 @@ export async function findList(ctx: Context) {
         if (status) {
             Zstatus = status === 'false' ? false : true;
         }
-        const whereCondition = CreateQueryBuilder(systemRoleSchema)
+        const whereCondition = CreateQueryBuilder(systemRoleSchema, (ctx as any)?.tenantId)
             .eq('delFlag', false)
             .eq('status', Zstatus)
             .like('roleName', roleName)
@@ -66,12 +83,13 @@ export async function findList(ctx: Context) {
     }
 };
 
-export async function findOptions() {
+export async function findOptions(ctx: Context) {
     try {
+        const tenantId = (ctx as any)?.tenantId ?? 0;
         const data = await WithCache(
-            CacheEnum.BASE_OPTIONS + 'systemRole',
+            CacheEnum.BASE_OPTIONS + 'systemRole:' + tenantId,
             async () => {
-                const where = CreateQueryBuilder(systemRoleSchema).eq('delFlag', false).build();
+                const where = CreateQueryBuilder(systemRoleSchema, tenantId).eq('delFlag', false).build();
                 return await FindAll(systemRoleSchema, where);
             }
         );
@@ -99,7 +117,7 @@ export async function findOnePermission(ctx: Context) {
 export async function findOne(ctx: Context) {
     try {
         const id = Number(ctx.params.id);
-        const data = await FindOneByKey(systemRoleSchema, 'roleId', id);
+        const data = await FindOneByKey(systemRoleSchema, 'roleId', id, (ctx as any)?.tenantId);
         if (!data || data.delFlag) return BaseResultData.fail(404);
         return BaseResultData.ok(data);
     }
@@ -172,7 +190,7 @@ export async function GetUserRoleIds(userId: number): Promise<number[]> {
 };
 
 // 获取用户角色和权限
-export async function GetUserRoleAndPermission(userId: number): Promise<{
+export async function GetUserRoleAndPermission(userId: number, tenantId?: number): Promise<{
     roles: string[];
     permissions: string[];
 }> {
@@ -184,7 +202,7 @@ export async function GetUserRoleAndPermission(userId: number): Promise<{
     try {
         const roleIds = await GetUserRoleIds(userId);
         if (!roleIds?.length) return backData;
-        const roleWhere = CreateQueryBuilder(systemRoleSchema).in('roleId', roleIds).build();
+        const roleWhere = CreateQueryBuilder(systemRoleSchema, tenantId).in('roleId', roleIds).build();
         const roleData = await FindAll(systemRoleSchema, roleWhere);
         backData.roles = roleData.map(item => item.roleCode);
         backData.permissions = await GetMenuPermissionByRoleIds(roleIds);
@@ -228,11 +246,12 @@ async function updateUserPermission(roleId: number) {
             const userInfo = await Get(key);
             if (!userInfo) continue;
             if (!userInfo?.roles?.includes(roleInfo?.roleCode)) continue;
-            const { roles, permissions } = await GetUserRoleAndPermission(userInfo?.userId);
+            const { roles, permissions } = await GetUserRoleAndPermission(userInfo?.userId, userInfo?.tenantId);
             userInfo.roles = roles;
             userInfo.permissions = permissions;
             await RedisSet(key, userInfo);
-            await RefreshRoutes(userInfo?.userId);
+            // 清除菜单缓存，下次请求时惰性重建
+            await RedisDel(CacheEnum.ADMIN_MENU + (userInfo?.userId || ''));
         }
     } catch (error) {
         logger.error('批量更新在线用户的权限失败:' + error);

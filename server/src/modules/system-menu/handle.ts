@@ -16,7 +16,25 @@ import { WithCache } from '@/core/cache';
 import { CacheEnum } from '@/constants/enum';
 import { logger } from '@/shared/logger';
 import { Set as RedisSet } from '@/core/database/redis';
-import { GetRoleMenuIdsAndBtnIds } from '@/modules/system-role/handle';
+import { systemUserRoleSchema as roleUserRoleSchema } from '@database/schema/system_user';
+
+/** 内联：获取角色菜单Ids和按钮Ids（消除跨模块导入） */
+async function GetRoleMenuIdsAndBtnIds(userId: number) {
+    try {
+        const userRoleWhere = CreateQueryBuilder(roleUserRoleSchema).eq('userId', userId).build();
+        const userRoleData = await FindAll(roleUserRoleSchema, userRoleWhere);
+        const roleIds = userRoleData.map((item: any) => item.roleId).filter(Boolean) as number[];
+        if (roleIds.length === 0) return { menuIds: [] as number[], menuBtnIds: [] as number[] };
+        const roleMenuWhere = CreateQueryBuilder(systemRoleMenuSchema).in('roleId', roleIds).build();
+        const roleMenuData = await FindAll(systemRoleMenuSchema, roleMenuWhere);
+        const menuIds = new Set(roleMenuData.map((item: any) => item.menuId).filter(Boolean) as number[]);
+        const menuBtnIds = new Set(roleMenuData.map((item: any) => item.menuBtnId).filter(Boolean) as number[]);
+        return { menuIds: [...menuIds], menuBtnIds: [...menuBtnIds] };
+    } catch (error) {
+        logger.error('获取角色菜单Ids失败:' + error);
+        return { menuIds: [] as number[], menuBtnIds: [] as number[] };
+    }
+}
 
 export async function createMenu(ctx: Context) {
     try {
@@ -41,14 +59,15 @@ export async function createMenuBtn(ctx: Context) {
 export async function findSimple(ctx: Context) {
     try {
         const { userId } = (ctx as any)?.user;
+        const tenantId = (ctx as any)?.tenantId;
         const data = await WithCache(CacheEnum.ADMIN_MENU + userId, async () => {
             const { menuBtnIds, menuIds } = await GetRoleMenuIdsAndBtnIds(userId);
-            const menuWhere = CreateQueryBuilder(systemMenuSchema).in('menuId', [...menuIds]).build();
+            const menuWhere = CreateQueryBuilder(systemMenuSchema, tenantId).in('menuId', [...menuIds]).build();
             const menuData = await FindAll(systemMenuSchema, menuWhere, {
                 orderByColumn: 'sort',
                 sortRule: 'desc',
             });
-            const menuBtnWhere = CreateQueryBuilder(systemMenuBtnSchema).in('btnId', [...menuBtnIds]).build();
+            const menuBtnWhere = CreateQueryBuilder(systemMenuBtnSchema, tenantId).in('btnId', [...menuBtnIds]).build();
             const menuBtnData = await FindAll(systemMenuBtnSchema, menuBtnWhere);
             return handleMenuListToTree(menuData, menuBtnData);
         });
@@ -64,7 +83,7 @@ export async function findTree(ctx: Context) {
             title,
             path,
         } = ctx.query;
-        const builder = CreateQueryBuilder(systemMenuSchema)
+        const builder = CreateQueryBuilder(systemMenuSchema, (ctx as any)?.tenantId)
             .eq('delFlag', false)
             .like('title', title)
             .like('path', path)
@@ -131,25 +150,6 @@ export async function removeMenuBtn(ctx: Context) {
     }
 };
 
-// 根据角色IDS获取菜单权限
-export async function GetMenuPermissionByRoleIds(roleIds: number[]): Promise<string[]> {
-    try {
-        const roleMenuWhere = CreateQueryBuilder(systemRoleMenuSchema).in('roleId', roleIds).build();
-        const roleMenu = await FindAll(systemRoleMenuSchema, roleMenuWhere);
-        const menuBtnIds = new Set(roleMenu.map(item => item.menuBtnId).filter(id => id !== null));
-        if (menuBtnIds.size === 0) return [];
-        const menuBtnWhere = CreateQueryBuilder(systemMenuBtnSchema).in('btnId', [...menuBtnIds]).build();
-        const menuBtns = await FindAll(systemMenuBtnSchema, menuBtnWhere);
-        const permission = new Set(menuBtns.map(item => item.permission).filter(per => per !== null));
-        if (permission.size) return [...permission];
-        return [];
-    }
-    catch (error) {
-        logger.error('根据角色IDS获取菜单权限失败:' + error);
-        return [];
-    }
-};
-
 // 把菜单列表转成后台生成菜单的树
 export function handleMenuListToTree(
     menuList: typeof systemMenuSchema.$inferSelect[],
@@ -195,6 +195,7 @@ export function handleMenuListToTree(
         if (menu.link) menuNode.meta.link = menu.link;
         if (menu.isIframe) menuNode.meta.isIframe = menu.isIframe;
         if (menu.activePath) menuNode.meta.activePath = menu.activePath;
+        if (menu.metadataCollectionId) menuNode.meta.metadataCollectionId = menu.metadataCollectionId;
         const authList = menuBtnMap.get(menu.menuId);
         if (authList) menuNode.meta.authList = authList;
         menuNode.children = [];
@@ -219,15 +220,15 @@ export function handleMenuListToTree(
 };
 
 // 刷新缓存菜单树
-export async function RefreshRoutes(userId: number) {
+export async function RefreshRoutes(userId: number, tenantId?: number) {
     try {
         const { menuBtnIds, menuIds } = await GetRoleMenuIdsAndBtnIds(userId);
-        const menuWhere = CreateQueryBuilder(systemMenuSchema).in('menuId', [...menuIds]).build();
+        const menuWhere = CreateQueryBuilder(systemMenuSchema, tenantId).in('menuId', [...menuIds]).build();
         const menuData = await FindAll(systemMenuSchema, menuWhere, {
             orderByColumn: 'sort',
             sortRule: 'desc',
         });
-        const menuBtnWhere = CreateQueryBuilder(systemMenuBtnSchema).in('btnId', [...menuBtnIds]).build();
+        const menuBtnWhere = CreateQueryBuilder(systemMenuBtnSchema, tenantId).in('btnId', [...menuBtnIds]).build();
         const menuBtnData = await FindAll(systemMenuBtnSchema, menuBtnWhere);
         const data = handleMenuListToTree(menuData, menuBtnData);
         if (data) await RedisSet(CacheEnum.ADMIN_MENU + userId, data);
