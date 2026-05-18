@@ -13,6 +13,7 @@
 
 # generated files
 src/core/task-registry.generated.ts
+/.context/
 
 # testing
 /coverage
