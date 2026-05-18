@@ -2,6 +2,8 @@ import { pgTable, bigserial, varchar, boolean } from 'drizzle-orm/pg-core';
 import { createInsertSchema, createSelectSchema } from "drizzle-typebox";
 import { BaseSchema } from '@database/base-schema';
 
+const { tenantId: _, ...AuditSchema } = BaseSchema;
+
 export const systemApiSchema = pgTable(
     'system_api',
     {
@@ -10,7 +12,7 @@ export const systemApiSchema = pgTable(
         apiPath: varchar('api_path', { length: 255 }).notNull(), // API路径
         apiMethod: varchar('api_method', { length: 10 }).notNull(), // API方法
         status: boolean('status').default(true), // 状态
-        ...BaseSchema,
+        ...AuditSchema, // BaseSchema 去除 tenant_id，system_api 为全局表
     }
 );
 

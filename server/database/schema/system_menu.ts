@@ -24,6 +24,7 @@ export const systemMenuSchema = pgTable(
         sort: integer('sort').default(0), // 排序
         status: boolean('status').default(true), // 状态
         parentId: bigint('parent_id', { mode: 'number' }), // 父菜单ID
+        metadataCollectionId: bigint('metadata_collection_id', { mode: 'number' }), // 关联的元数据Collection ID
         ...BaseSchema,
     }
 );

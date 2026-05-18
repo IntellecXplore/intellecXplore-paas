@@ -1,7 +1,8 @@
-import { pgTable, bigserial, varchar, boolean, bigint } from 'drizzle-orm/pg-core';
+import { pgTable, bigserial, varchar, boolean, bigint, smallint } from 'drizzle-orm/pg-core';
 import { createInsertSchema, createSelectSchema } from "drizzle-typebox";
 import { BaseSchema } from '@database/base-schema';
 import { systemRoleSchema } from '@database/schema/system_role';
+import { systemTenantSchema } from '@database/schema/system_tenant';
 import { systemDeptSchema } from './system_dept';
 
 export const systemUserSchema = pgTable(
@@ -32,3 +33,16 @@ export const systemUserRoleSchema = pgTable(
 );
 export const InsertSystemUserRole = createInsertSchema(systemUserRoleSchema);
 export const SelectSystemUserRole = createSelectSchema(systemUserRoleSchema);
+
+/** 用户-租户关联（支持一个用户属于多个租户） */
+export const systemUserTenantSchema = pgTable(
+    'system_user_tenant',
+    {
+        userTenantId: bigserial('user_tenant_id', { mode: 'number' }).primaryKey(),
+        userId: bigint('user_id', { mode: 'number' }).references(() => systemUserSchema.userId).notNull(),
+        tenantId: bigint('tenant_id', { mode: 'number' }).references(() => systemTenantSchema.tenantId).notNull(),
+        isDefault: smallint('is_default').default(0), // 是否默认租户
+    }
+);
+export const InsertSystemUserTenant = createInsertSchema(systemUserTenantSchema);
+export const SelectSystemUserTenant = createSelectSchema(systemUserTenantSchema);
