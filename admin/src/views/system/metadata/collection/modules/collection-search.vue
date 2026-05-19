@@ -47,7 +47,7 @@ const formItems = computed(() => [
       placeholder: '请选择存储类型',
       options: [
         { label: 'PostgreSQL', value: 'postgresql' },
-        { label: 'MongoDB', value: 'mongodb' },
+        { label: 'MongoDB', value: 'mongodb', disabled: true },
       ]
     }
   },

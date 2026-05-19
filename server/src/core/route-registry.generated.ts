@@ -25,6 +25,7 @@ import route22 from '@/modules/monitor-cache/route';
 import route23 from '@/modules/system-tenant/route';
 import route24 from '@/modules/metadata-collection/route';
 import route25 from '@/modules/system-menu/route';
+import route26 from '@/modules/data-integration/route';
 
 export const allRoutes = [
     route0,
@@ -51,5 +52,6 @@ export const allRoutes = [
     route22,
     route23,
     route24,
-    route25
+    route25,
+    route26
 ];
