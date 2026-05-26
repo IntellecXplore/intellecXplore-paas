@@ -224,158 +224,191 @@ export function GetClientType(userAgent: string): IClientType {
 };
 
 /**
- * 获取应用生态平台
+ * 获取应用生态平台（优先级排序的规则数组，避免平铺 if 链）
  * @param userAgent 用户代理
  * @returns 应用生态平台
  */
-export function GetClientPlatform(userAgent: string): IClientPlatform {
-    if (!userAgent) return 'unknown';
-    const ua = userAgent.toLowerCase();
 
-    // 社交/内容平台检测（优先级最高）
-    // 微信平台检测（包括微信浏览器和小程序）
-    if (ua.includes('micromessenger')) return 'wechat';
-    // 抖音/字节平台检测
-    if (ua.includes('aweme') || ua.includes('douyin') || ua.includes('toutiao')) return 'douyin';
-    // 微博平台检测
-    if (ua.includes('weibo') || ua.includes('__weibo__')) return 'weibo';
-    // 小红书平台检测
-    if (ua.includes('xiaohongshu') || ua.includes('xhsdiscover')) return 'xiaohongshu';
+interface PlatformRule {
+    patterns: string[];
+    platform: IClientPlatform;
+    /** 可选的额外匹配条件（如 safari 需排除 android） */
+    extra?: (ua: string) => boolean;
+}
 
-    // 电商平台检测
-    // 支付宝平台检测
-    if (ua.includes('alipay') || ua.includes('aliapp')) return 'alipay';
-    // 淘宝平台检测
-    if (ua.includes('taobao') || ua.includes('aliapp(tb')) return 'taobao';
-    // 京东平台检测
-    if (ua.includes('jdapp') || ua.includes('jdpingou')) return 'jd';
-    // 拼多多平台检测
-    if (ua.includes('pinduoduo') || ua.includes('pddapp')) return 'pinduoduo';
-    // 搜索/信息平台检测
-    // 百度平台检测
-    if (ua.includes('baiduboxapp') || ua.includes('baidubrowser')) return 'baidu';
-
-    // 国产浏览器检测（优先于国际浏览器）
-    // UC 浏览器
-    if (ua.includes('ucbrowser') || ua.includes('ucweb')) return 'uc';
-    // QQ 浏览器（注意与 QQ 应用区分）
-    if (ua.includes('mqqbrowser') || ua.includes('tencenttraveler')) return 'qq-browser';
-    // 夸克浏览器
-    if (ua.includes('quark')) return 'quark';
-    // 搜狗浏览器
-    if (ua.includes('metasr') || ua.includes('sogou')) return 'sogou';
-    // 360 浏览器
-    if (ua.includes('360') || ua.includes('qihu') || ua.includes('qhbrowser')) return '360-browser';
-    // QQ 应用检测（放在 QQ 浏览器之后）
-    if (ua.includes('qq/') || ua.includes('qzone')) return 'qq';
-
-    // 国际浏览器检测
-    // Edge 浏览器（优先检测，因为包含 chrome 字样）
-    if (ua.includes('edg/') || ua.includes('edge/')) return 'edge';
-    // Chrome 浏览器
-    if (ua.includes('chrome/') && !ua.includes('edg')) return 'chrome';
-    // Safari 浏览器（注意很多浏览器都包含 safari 字样）
-    if (ua.includes('safari/') && !ua.includes('chrome') && !ua.includes('android')) return 'safari';
-    // Firefox 浏览器
-    if (ua.includes('firefox/')) return 'firefox';
-    // Opera 浏览器
-    if (ua.includes('opr/') || ua.includes('opera/')) return 'opera';
-
-    // 原生应用检测（没有浏览器特征的移动端）
-    if ((ua.includes('android') || ua.includes('iphone') || ua.includes('ipad')) &&
+const PLATFORM_RULES: PlatformRule[] = [
+    // 社交/内容平台
+    { patterns: ['micromessenger'], platform: 'wechat' },
+    { patterns: ['aweme', 'douyin', 'toutiao'], platform: 'douyin' },
+    { patterns: ['weibo', '__weibo__'], platform: 'weibo' },
+    { patterns: ['xiaohongshu', 'xhsdiscover'], platform: 'xiaohongshu' },
+    // 电商平台
+    { patterns: ['alipay', 'aliapp'], platform: 'alipay' },
+    { patterns: ['taobao', 'aliapp(tb'], platform: 'taobao' },
+    { patterns: ['jdapp', 'jdpingou'], platform: 'jd' },
+    { patterns: ['pinduoduo', 'pddapp'], platform: 'pinduoduo' },
+    // 搜索/信息平台
+    { patterns: ['baiduboxapp', 'baidubrowser'], platform: 'baidu' },
+    // 国产浏览器
+    { patterns: ['ucbrowser', 'ucweb'], platform: 'uc' },
+    { patterns: ['mqqbrowser', 'tencenttraveler'], platform: 'qq-browser' },
+    { patterns: ['quark'], platform: 'quark' },
+    { patterns: ['metasr', 'sogou'], platform: 'sogou' },
+    { patterns: ['360', 'qihu', 'qhbrowser'], platform: '360-browser' },
+    { patterns: ['qq/', 'qzone'], platform: 'qq' },
+    // 国际浏览器（优先级顺序处理了 Edge > Chrome 的包含关系）
+    { patterns: ['edg/', 'edge/'], platform: 'edge' },
+    { patterns: ['chrome/'], platform: 'chrome' },
+    { patterns: ['safari/'], platform: 'safari', extra: (ua) => !ua.includes('android') },
+    { patterns: ['firefox/'], platform: 'firefox' },
+    { patterns: ['opr/', 'opera/'], platform: 'opera' },
+    // 原生应用（无浏览器特征的移动端）
+    { patterns: [], platform: 'native', extra: (ua) =>
+        (ua.includes('android') || ua.includes('iphone') || ua.includes('ipad')) &&
         !ua.includes('safari') &&
         !ua.includes('chrome') &&
         !ua.includes('firefox') &&
-        !ua.includes('edge')) {
-        return 'native';
-    };
+        !ua.includes('edge')
+    },
+];
 
+export function GetClientPlatform(userAgent: string): IClientPlatform {
+    if (!userAgent) return 'unknown';
+    const ua = userAgent.toLowerCase();
+    for (const rule of PLATFORM_RULES) {
+        const matched = rule.patterns.length === 0
+            ? rule.extra?.(ua)
+            : rule.patterns.some(p => ua.includes(p)) && (!rule.extra || rule.extra(ua));
+        if (matched) return rule.platform;
+    }
     return 'unknown';
 };
 
 /**
- * 获取操作系统
+ * 获取操作系统（规则数组 + 版本提取函数，避免平铺 25+ if 链）
  * @param userAgent 用户代理
  * @returns 操作系统
  */
+
+const WINDOWS_VERSION_RULES: Array<{ pattern: string; label: string }> = [
+    { pattern: 'windows nt 10.0', label: 'Windows 10/11' },
+    { pattern: 'windows nt 6.3', label: 'Windows 8.1' },
+    { pattern: 'windows nt 6.2', label: 'Windows 8' },
+    { pattern: 'windows nt 6.1', label: 'Windows 7' },
+    { pattern: 'windows nt 6.0', label: 'Windows Vista' },
+    { pattern: 'windows nt 5.2', label: 'Windows Server 2003' },
+    { pattern: 'windows nt 5.1', label: 'Windows XP' },
+    { pattern: 'windows nt 5.0', label: 'Windows 2000' },
+];
+
+const LINUX_DISTRO_RULES: Array<{ pattern: string; label: string }> = [
+    { pattern: 'uos', label: '统信 UOS' },
+    { pattern: 'uniontech', label: '统信 UOS' },
+    { pattern: 'kylin', label: '银河麒麟' },
+    { pattern: 'deepin', label: '深度 Deepin' },
+    { pattern: 'newstart', label: '中兴新支点' },
+    { pattern: 'redflag', label: '红旗 Linux' },
+    { pattern: 'ubuntu', label: 'Ubuntu' },
+    { pattern: 'debian', label: 'Debian' },
+    { pattern: 'fedora', label: 'Fedora' },
+    { pattern: 'centos', label: 'CentOS' },
+    { pattern: 'arch', label: 'Arch Linux' },
+    { pattern: 'manjaro', label: 'Manjaro' },
+    { pattern: 'mint', label: 'Linux Mint' },
+];
+
+const MACOS_VERSION_NAMES: Record<string, string> = {
+    '10.15': 'Catalina',
+    '10.14': 'Mojave',
+    '10.13': 'High Sierra',
+    '10.12': 'Sierra',
+    '11': 'Big Sur',
+    '12': 'Monterey',
+    '13': 'Ventura',
+    '14': 'Sonoma',
+    '15': 'Sequoia',
+};
+
+/** 每个规则返回 OS 字符串或 null 表示不匹配，继续下一个规则 */
+type OsExtractor = (ua: string) => string | null;
+
+function extractHarmonyOS(ua: string): string | null {
+    if (!ua.includes('harmonyos') && !ua.includes('hongmeng')) return null;
+    const match = ua.match(/harmonyos[\/\s]?(\d+(?:\.\d+)?)/);
+    return match ? `HarmonyOS ${match[1]}` : 'HarmonyOS';
+}
+
+function extractWindows(ua: string): string | null {
+    for (const rule of WINDOWS_VERSION_RULES) {
+        if (ua.includes(rule.pattern)) return rule.label;
+    }
+    if (ua.includes('windows')) return 'Windows';
+    return null;
+}
+
+function extractMacOS(ua: string): string | null {
+    if (!ua.includes('mac os x') && !ua.includes('macintosh')) return null;
+    const match = ua.match(/mac os x (\d+)[._](\d+)(?:[._](\d+))?/);
+    if (match) {
+        const major = match[1];
+        const minor = match[2];
+        const versionKey = major === '10' ? `${major}.${minor}` : major;
+        const versionName = MACOS_VERSION_NAMES[versionKey];
+        return versionName ? `macOS ${versionName}` : `macOS ${major}.${minor}`;
+    }
+    return 'macOS';
+}
+
+function extractIOS(ua: string): string | null {
+    if (!ua.includes('iphone') && !ua.includes('ipad') && !ua.includes('ipod')) return null;
+    const match = ua.match(/os (\d+)[._](\d+)(?:[._](\d+))?/);
+    return match ? `iOS ${match[1]}.${match[2]}` : 'iOS';
+}
+
+function extractAndroid(ua: string): string | null {
+    if (!ua.includes('android')) return null;
+    const match = ua.match(/android (\d+(?:\.\d+)?(?:\.\d+)?)/);
+    return match ? `Android ${match[1]}` : 'Android';
+}
+
+function extractChromeOS(ua: string): string | null {
+    if (!ua.includes('cros') && !ua.includes('chromeos')) return null;
+    const match = ua.match(/cros[\/\s][\w]+\s(\d+(?:\.\d+)?)/);
+    return match ? `Chrome OS ${match[1]}` : 'Chrome OS';
+}
+
+function extractLinux(ua: string): string | null {
+    for (const rule of LINUX_DISTRO_RULES) {
+        if (ua.includes(rule.pattern)) return rule.label;
+    }
+    if (ua.includes('linux')) return 'Linux';
+    return null;
+}
+
+function extractUnixBSD(ua: string): string | null {
+    if (ua.includes('unix')) return 'Unix';
+    if (ua.includes('bsd')) return 'BSD';
+    return null;
+}
+
+const OS_RULES: OsExtractor[] = [
+    extractHarmonyOS,
+    extractWindows,
+    extractMacOS,
+    extractIOS,
+    extractAndroid,
+    extractChromeOS,
+    extractLinux,
+    extractUnixBSD,
+];
+
 export function GetClientOs(userAgent: string): string {
     if (!userAgent) return '未知';
     const ua = userAgent.toLowerCase();
-    // 鸿蒙系统检测（优先检测，因为可能包含 android 字样）
-    if (ua.includes('harmonyos') || ua.includes('hongmeng')) {
-        const match = ua.match(/harmonyos[\/\s]?(\d+(?:\.\d+)?)/);
-        if (match) return `HarmonyOS ${match[1]}`;
-        return 'HarmonyOS';
-    };
-    // Windows 系统检测
-    if (ua.includes('windows nt 10.0')) return 'Windows 10/11';
-    if (ua.includes('windows nt 6.3')) return 'Windows 8.1';
-    if (ua.includes('windows nt 6.2')) return 'Windows 8';
-    if (ua.includes('windows nt 6.1')) return 'Windows 7';
-    if (ua.includes('windows nt 6.0')) return 'Windows Vista';
-    if (ua.includes('windows nt 5.2')) return 'Windows Server 2003';
-    if (ua.includes('windows nt 5.1')) return 'Windows XP';
-    if (ua.includes('windows nt 5.0')) return 'Windows 2000';
-    if (ua.includes('windows')) return 'Windows';
-    // macOS 系统检测（带版本名称）
-    if (ua.includes('mac os x') || ua.includes('macintosh')) {
-        const match = ua.match(/mac os x (\d+)[._](\d+)(?:[._](\d+))?/);
-        if (match) {
-            const major = match[1];
-            const minor = match[2];
-            const versionNames: Record<string, string> = {
-                '10.15': 'Catalina',
-                '10.14': 'Mojave',
-                '10.13': 'High Sierra',
-                '10.12': 'Sierra',
-                '11': 'Big Sur',
-                '12': 'Monterey',
-                '13': 'Ventura',
-                '14': 'Sonoma',
-                '15': 'Sequoia'
-            };
-            const versionKey = major === '10' ? `${major}.${minor}` : major;
-            const versionName = versionNames[versionKey];
-            return versionName ? `macOS ${versionName}` : `macOS ${major}.${minor}`;
-        };
-        return 'macOS';
-    };
-    // iOS 系统检测
-    if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ipod')) {
-        const match = ua.match(/os (\d+)[._](\d+)(?:[._](\d+))?/);
-        if (match) return `iOS ${match[1]}.${match[2]}`;
-        return 'iOS';
-    };
-    // Android 系统检测
-    if (ua.includes('android')) {
-        const match = ua.match(/android (\d+(?:\.\d+)?(?:\.\d+)?)/);
-        if (match) return `Android ${match[1]}`;
-        return 'Android';
-    };
-    // Chrome OS 检测
-    if (ua.includes('cros') || ua.includes('chromeos')) {
-        const match = ua.match(/cros[\/\s][\w]+\s(\d+(?:\.\d+)?)/);
-        if (match) return `Chrome OS ${match[1]}`;
-        return 'Chrome OS';
-    };
-    // 国产 Linux 发行版检测
-    if (ua.includes('uos') || ua.includes('uniontech')) return '统信 UOS';
-    if (ua.includes('kylin')) return '银河麒麟';
-    if (ua.includes('deepin')) return '深度 Deepin';
-    if (ua.includes('newstart')) return '中兴新支点';
-    if (ua.includes('redflag')) return '红旗 Linux';
-    // 其他 Linux 发行版检测
-    if (ua.includes('ubuntu')) return 'Ubuntu';
-    if (ua.includes('debian')) return 'Debian';
-    if (ua.includes('fedora')) return 'Fedora';
-    if (ua.includes('centos')) return 'CentOS';
-    if (ua.includes('arch')) return 'Arch Linux';
-    if (ua.includes('manjaro')) return 'Manjaro';
-    if (ua.includes('mint')) return 'Linux Mint';
-    if (ua.includes('linux')) return 'Linux';
-    // 其他系统
-    if (ua.includes('unix')) return 'Unix';
-    if (ua.includes('bsd')) return 'BSD';
+    for (const extract of OS_RULES) {
+        const result = extract(ua);
+        if (result) return result;
+    }
     return '未知';
 };
 

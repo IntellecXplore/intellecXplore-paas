@@ -1,7 +1,7 @@
 import type { Context } from 'elysia';
 import type { ModelMessage } from 'ai';
 import config from '@/config';
-import { FindOneByKey } from '@/core/agent/database/repository';
+import { FindOneByKey } from '@/core/database/repository';
 import { systemAgentConfigSchema } from '@database/schema/system_agent_config';
 import { logger } from '@/shared/logger';
 

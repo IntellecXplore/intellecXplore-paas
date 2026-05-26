@@ -9,6 +9,7 @@ import {
     CreateQueryBuilder,
     FindPage,
     FindAll,
+    getTenantIdFromCtx,
 } from '@/core/database/repository';
 import { logger } from '@/shared/logger';
 import { WithCache } from '@/core/cache';
@@ -85,7 +86,7 @@ export async function findList(ctx: Context) {
 
 export async function findOptions(ctx: Context) {
     try {
-        const tenantId = (ctx as any)?.tenantId ?? 0;
+        const tenantId = getTenantIdFromCtx(ctx);
         const data = await WithCache(
             CacheEnum.BASE_OPTIONS + 'systemRole:' + tenantId,
             async () => {

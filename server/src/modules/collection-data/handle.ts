@@ -7,6 +7,7 @@ import { connectionManager, type StorageConfig } from '@/core/database/connectio
 import { metadataCollectionsSchema } from '@database/schema/metadata_collections';
 import { metadataFieldsSchema } from '@database/schema/metadata_fields';
 import { logger } from '@/shared/logger';
+import { coerceValue } from '@/shared/coerce-value';
 
 const BASE_COLUMNS = ['id', 'create_time', 'create_by', 'update_time', 'update_by', 'del_flag', 'remark'];
 
@@ -35,35 +36,6 @@ async function getFields(collectionId: number) {
         orderByColumn: 'sort_order',
         sortRule: 'asc',
     }) as any[];
-}
-
-function coerceValue(value: any, fieldType: string): any {
-    if (value === null || value === undefined) return null;
-    if (fieldType === 'integer') {
-        const n = Number(value);
-        if (isNaN(n)) throw new Error(`Invalid integer: ${value}`);
-        return n;
-    }
-    if (fieldType === 'decimal') {
-        const n = Number(value);
-        if (isNaN(n)) throw new Error(`Invalid decimal: ${value}`);
-        return n;
-    }
-    if (fieldType === 'boolean') {
-        if (value === true || value === 'true' || value === 1 || value === '1') return true;
-        if (value === false || value === 'false' || value === 0 || value === '0') return false;
-        throw new Error(`Invalid boolean: ${value}`);
-    }
-    if (fieldType === 'json') {
-        return typeof value === 'string' ? value : JSON.stringify(value);
-    }
-    if (fieldType === 'date' || fieldType === 'datetime') {
-        if (value instanceof Date) return value.toISOString();
-        const d = new Date(value);
-        if (isNaN(d.getTime())) throw new Error(`Invalid date: ${value}`);
-        return d.toISOString();
-    }
-    return String(value);
 }
 
 function buildFilterCondition(field: any, value: string, paramIndex: number): { condition: string; param: any } {
@@ -139,65 +111,32 @@ export async function findList(ctx: Context) {
         const pageNum = Math.max(1, Number(query.pageNum) || 1);
         const pageSize = Math.max(1, Math.min(100, Number(query.pageSize) || 10));
 
-        const conditions: string[] = [`"${tableIdent}".del_flag = false`];
-
-        // Parse filter params: ?name=xxx&age=25  (key=field.columnName)
         const skipKeys = new Set(['pageNum', 'pageSize', 'orderByColumn', 'sortRule', 'fields', 'tableName']);
+
+        const actualConditions: string[] = [];
+        const params: any[] = [];
+        let paramCounter = 1;
+
         for (const [key, value] of Object.entries(query)) {
             if (skipKeys.has(key)) continue;
             if (value === undefined || value === null || value === '') continue;
+            if (typeof value === 'string' && (value.startsWith('{') || value.startsWith('['))) continue;
             const field = getFieldByColumnName(fields, key);
             if (!field) {
                 logger.warn(`[CollectionData] Unknown filter field: ${key} on table ${tableName}`);
                 continue;
             }
-            // String values that look like JSON are ignored as filters
-            if (typeof value === 'string' && (value.startsWith('{') || value.startsWith('['))) continue;
-            const { condition, param } = buildFilterCondition(field, String(value), 0);
+            const { condition, param } = buildFilterCondition(field, String(value), paramCounter);
             if (condition && param !== null) {
-                conditions.push(condition.replace('$0', `$${conditions.length}`));
-            }
-        }
-
-        // We'll build the params array matching the condition placeholders
-        // For now, use a simpler approach: serialized params via targetClient.unsafe
-        const params: any[] = [false]; // $1 = del_flag = false
-        // Rebuild conditions properly
-        const actualConditions: string[] = [];
-        let paramCounter = 2; // start from $2 since $1 = false
-
-        for (const [key, value] of Object.entries(query)) {
-            if (skipKeys.has(key)) continue;
-            if (value === undefined || value === null || value === '') continue;
-            if (typeof value === 'string' && (value.startsWith('{') || value.startsWith('['))) continue;
-            const field = getFieldByColumnName(fields, key);
-            if (!field) continue;
-
-            const col = safeIdent(field.columnName);
-            const type = field.type;
-
-            if (['string', 'text', 'email', 'phone', 'url', 'richtext', 'enum'].includes(type)) {
-                actualConditions.push(`${col} ILIKE $${paramCounter}`);
-                params.push(`%${String(value)}%`);
-                paramCounter++;
-            } else if (['integer', 'decimal'].includes(type)) {
-                const n = Number(value);
-                if (!isNaN(n)) {
-                    actualConditions.push(`${col} = $${paramCounter}`);
-                    params.push(n);
-                    paramCounter++;
-                }
-            } else if (type === 'boolean') {
-                const b = value === 'true' || value === '1' || value === '是';
-                actualConditions.push(`${col} = $${paramCounter}`);
-                params.push(b);
+                actualConditions.push(condition);
+                params.push(param);
                 paramCounter++;
             }
         }
 
         const whereClause = actualConditions.length > 0
-            ? `${tableIdent}.del_flag = false AND ${actualConditions.join(' AND ')} AND "${tableIdent}".tenant_id = $${paramCounter}`
-            : `${tableIdent}.del_flag = false AND "${tableIdent}".tenant_id = $${paramCounter}`;
+            ? `"${tableIdent}".del_flag = false AND ${actualConditions.join(' AND ')} AND "${tableIdent}".tenant_id = $${paramCounter}`
+            : `"${tableIdent}".del_flag = false AND "${tableIdent}".tenant_id = $${paramCounter}`;
         params.push(tenantId);
         paramCounter++;
 

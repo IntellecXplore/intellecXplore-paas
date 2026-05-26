@@ -75,23 +75,23 @@ class Logger {
     /**
      * 请求日志信息
      */
+    private static readonly METHOD_COLORS: Record<string, string> = {
+        POST: Colors.green,
+        PUT: Colors.yellow,
+        DELETE: Colors.red,
+        PATCH: Colors.magenta,
+    };
+
     logRequest(ctx: Context) {
         const { path, request, startTime, response, set } = ctx as any;
         const duration = Date.now() - startTime;
         const method = request.method;
         const code = response?.code || set?.status || 500;
-        let statusColor = Colors.green;
-        if (code >= 500) statusColor = Colors.red;
-        else if (code >= 400) statusColor = Colors.yellow;
-        else if (code >= 300) statusColor = Colors.cyan;
-        let methodColor = Colors.blue;
-        if (method === 'POST') methodColor = Colors.green;
-        else if (method === 'PUT') methodColor = Colors.yellow;
-        else if (method === 'DELETE') methodColor = Colors.red;
-        else if (method === 'PATCH') methodColor = Colors.magenta;
-        let durationColor = Colors.green;
-        if (duration > 1000) durationColor = Colors.red;
-        else if (duration > 500) durationColor = Colors.yellow;
+
+        const statusColor = code >= 500 ? Colors.red : code >= 400 ? Colors.yellow : code >= 300 ? Colors.cyan : Colors.green;
+        const methodColor = Logger.METHOD_COLORS[method] || Colors.blue;
+        const durationColor = duration > 1000 ? Colors.red : duration > 500 ? Colors.yellow : Colors.green;
+
         this.debug(
             `${methodColor}${method.padEnd(7)}${Colors.reset} ` +
             `${statusColor}${code}${Colors.reset} ` +

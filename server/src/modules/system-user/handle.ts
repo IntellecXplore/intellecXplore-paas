@@ -1,5 +1,5 @@
 import { Context } from 'elysia';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { Get } from '@/core/database/redis';
 import { CacheEnum } from '@/constants/enum';
 import { BaseResultData } from '@/core/result';

@@ -7,6 +7,7 @@ import {
     CreateQueryBuilder,
     FindAll,
     FindOneByKey,
+    getTenantIdFromCtx,
 } from '@/core/database/repository';
 import { CacheEnum } from '@/constants/enum';
 import { WithCache } from '@/core/cache';
@@ -49,7 +50,7 @@ export async function findTree(ctx: Context) {
 
 export async function findOptions(ctx: Context) {
     try {
-        const tenantId = (ctx as any)?.tenantId ?? 0;
+        const tenantId = getTenantIdFromCtx(ctx);
         const data = await WithCache(
             CacheEnum.BASE_OPTIONS + 'systemDeptTree:' + tenantId,
             async () => {

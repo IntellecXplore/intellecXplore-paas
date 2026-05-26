@@ -17,6 +17,9 @@ import { connectionManager, type StorageConfig } from '@/core/database/connectio
 
 const VALID_INDEX_TYPES = ['btree', 'hash', 'gist', 'gin', 'brin', 'sp-gist'];
 
+/** 系统保留命名空间：仅种子脚本可创建，用户不可直接创建或修改为此类型 */
+const RESERVED_NAMESPACES = ['system'];
+
 const TYPE_TO_PG: Record<string, (f: any) => string> = {
     string: (f) => `VARCHAR(${f.length || 255})`,
     text: () => 'TEXT',
@@ -109,6 +112,10 @@ export async function createWithFields(ctx: Context) {
             }
         }
 
+        if (collection.namespace && RESERVED_NAMESPACES.includes(collection.namespace)) {
+            return BaseResultData.fail(400, '不允许创建系统类型的元数据表单，命名空间 "system" 仅供系统内部使用');
+        }
+
         const result = await db.transaction(async (tx) => {
             const collData: Record<string, any> = {
                 ...collection,
@@ -159,6 +166,10 @@ export async function createWithFields(ctx: Context) {
 
 export async function create(ctx: Context) {
     try {
+        const body = ctx.body as Record<string, any>;
+        if (body.namespace && RESERVED_NAMESPACES.includes(body.namespace)) {
+            return BaseResultData.fail(400, '不允许创建系统类型的元数据表单，命名空间 "system" 仅供系统内部使用');
+        }
         const record = await InsertOneAndRes(metadataCollectionsSchema, ctx);
         return BaseResultData.ok(record);
     } catch (error: any) {
@@ -212,6 +223,13 @@ export async function update(ctx: Context) {
         const tenantId = (ctx as any)?.tenantId;
         const current = await FindOneByKey(metadataCollectionsSchema, 'id', cid, tenantId);
         if (!current || current.delFlag) return BaseResultData.fail(404);
+
+        if (body.namespace && RESERVED_NAMESPACES.includes(body.namespace)) {
+            const curNs = (current as Record<string, any>).namespace;
+            if (!curNs || !RESERVED_NAMESPACES.includes(curNs)) {
+                return BaseResultData.fail(400, '不允许将命名空间修改为 "system"，该类型仅供系统内部使用');
+            }
+        }
 
         const expectedVersion = current.version || 0;
         const updateData: Record<string, any> = {
