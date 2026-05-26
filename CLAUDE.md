@@ -195,9 +195,54 @@ Worker 重启后，`execute()` 检查 `completedSteps`，跳过已完成的步�
 
 ---
 
-## ★ 多租户系统 (Phase 1-4 已完成)
+## ★ 多租户系统（已降级为单租户，保留代码可恢复）
 
-### 架构概览
+> **当前状态**: 单租户模式（`config.multiTenant = false`，默认）。所有租户代码保留不动，
+> 通过 `config.multiTenant = true` 一键恢复多租户。
+> 降级方案详见 `.context/plan/calm-pondering-biscuit.md`。
+
+### 降级策略：三层切断
+
+| 层 | 改动 | 文件 |
+|----|------|------|
+| 数据层 | `getTenantIdFromCtx()` 在 `!multiTenant` 时返回 `undefined`，所有 QueryBuilder 退化为不过滤 | `core/database/repository.ts` |
+| 中间件层 | TenantGuard 仅 `multiTenant` 时注册 | `middleware/index.ts` |
+| 认证层 | login 跳过租户选择，JWT 不含 tenantId，不返回 currentTenantId/tenants | `modules/system-auth/handle.ts` |
+
+### 路由条件注册
+
+- `/auth/tenants`、`POST /auth/switch-tenant` — 仅多租户模式注册 (`modules/system-auth/route.ts`)
+- `/system/tenant/**` — 全部仅多租户模式注册 (`modules/system-tenant/route.ts`)
+
+### 恢复多租户
+
+```bash
+# 1. 在 yaml 中设置 multiTenant: true
+# 2. 运行种子脚本绑定用户到默认租户
+cd server && bun run seed
+# 3. 确认所有 role/menu/dept 数据有 tenant_id = 1（ALTER 默认值已覆盖）
+```
+
+### 保留的租户基础设施（不删不改）
+
+| 保留项 | 说明 |
+|--------|------|
+| `BaseSchema.tenantId` | 所有表仍含该列（DEFAULT 1） |
+| `system_tenant` 表 | 含默认租户行 (tenantId=1) |
+| `system_user_tenant` 表 | 用户-租户关联 |
+| `TenantGuard` 代码 | `middleware/guards/tenant.ts` 不动 |
+| `system-tenant` 模块 | handle/dto/route 代码全部保留 |
+| `tenant_migration.sql` | 保留供恢复时参考 |
+| Repository 注入逻辑 | 代码不动，靠 `getTenantIdFromCtx` 开关控制 |
+
+### 前端清理
+
+- 移除: `currentTenantId`/`tenantList`/`switchTenant()`/`fetchTenants()` (store)
+- 移除: `fetchTenantList()`/`fetchSwitchTenant()` (api/auth)
+- 移除: `views/system/tenant/`、`api/system/tenant.ts`、`types/api/system-tenant.d.ts`
+- 移除: 登录页 tenantCode 输入框、headerBar tenantSwitcher 配置、路由 tenant 条目
+
+### 架构概览（多租户模式时）
 
 采用 **共享表 + tenant_id 列** 策略，所有数据表通过 `BaseSchema` 继承 `tenantId` 字段。
 Repository 层自动注入/过滤，业务代码最小侵入。
@@ -210,7 +255,7 @@ Repository 层自动注入/过滤，业务代码最小侵入。
 | `database/schema/system_tenant.ts` | 租户表（全局表，不继承 BaseSchema） |
 | `database/schema/system_user.ts` | `system_user_tenant` 用户-租户关联表 |
 | `src/middleware/guards/tenant.ts` | TenantGuard — 校验租户状态、缓存到 Redis |
-| `src/middleware/index.ts` | 中间件链: AuthGuard → **TenantGuard** → PermissionGuard |
+| `src/middleware/index.ts` | 中间件链: AuthGuard → **(多租户)TenantGuard** → PermissionGuard |
 | `src/core/database/repository.ts` | QueryBuilder/Insert/Update/Delete 自动作用域 |
 | `src/modules/system-auth/handle.ts` | 登录(EnsureUserHasTenant)、切换租户、JWT 含 tenantId |
 | `src/constants/enum.ts` | `TENANT_INFO` 缓存键 |
@@ -218,7 +263,7 @@ Repository 层自动注入/过滤，业务代码最小侵入。
 ### 中间件执行顺序
 
 ```
-IPBlack → ApiGuard → AnalysisRoute → AuthGuard → TenantGuard → IpRateLimit → PermissionGuard
+IPBlack → ApiGuard → AnalysisRoute → AuthGuard → (multiTenant? TenantGuard) → IpRateLimit → PermissionGuard
 ```
 
 ### Repository 自动作用域
@@ -229,33 +274,66 @@ IPBlack → ApiGuard → AnalysisRoute → AuthGuard → TenantGuard → IpRateL
 - **FindOneByKey**: 可选第 4 参数 `tenantId`
 - 所有 tenantId 参数可选 — 不传时行为不变（向后兼容）
 
-### 租户数据流
+### 登录 → 租户确定流程（多租户模式）
 
 ```
-Login → EnsureUserHasTenant → JWT { userId, tenantId }
-  → Redis 缓存 userInfo (含 permissions, tenantId, tenants)
-  → 返回 { tokens, currentTenantId, tenants }
+Login({ username, password, tenantCode? })
+  → 验证账密
+  → 若指定 tenantCode: 精确匹配租户
+  → 未指定: EnsureUserHasTenant(userId)
+      → 查 system_user_tenant → 有则返回 isDefault 租户
+      → 无则抛错 "当前账号无租户信息，请联系管理员" (拒绝登录)
+  → GetUserRoleAndPermission(userId, tenantId) → 获取角色+权限
+  → JWT { userId, tenantId } → Redis 缓存 → 返回 { tokens, currentTenantId, tenants }
+```
 
-Request → AuthGuard (Redis → ctx.user)
-  → TenantGuard (校验租户 → ctx.tenant / ctx.tenantId)
+**单租户模式**: 跳过租户确定流程，JWT 仅含 `{ userId }`，响应仅含 tokens。
+
+### 新建租户时自动完成的 6 步操作
+
+`server/src/modules/system-tenant/handle.ts` → `create()`:
+
+| 步骤 | 操作 | 说明 |
+|------|------|------|
+| 1 | INSERT `system_tenant` | 创建租户记录 |
+| 2 | INSERT `system_user_tenant` | 将创建者关联到新租户 |
+| 3 | 复制 `system_role` (tenantId=1 → 新租户) | 为每个角色创建租户级副本 |
+| 4 | 复制 `system_role_menu` | 同步角色-菜单权限关联 |
+| 5 | INSERT `system_user_role` | 给创建者分配新租户 SYS_ADMIN 角色 |
+| 6 | INSERT `system_user` + 关联 | 创建租户专属管理员账号 (admin/admin)，分配 SYS_ADMIN |
+
+管理员用户名策略: 优先 `admin`，若已存在则 `admin_{tenantCode}`。
+
+### 租户数据流（请求时，多租户模式）
+
+```
+Request → AuthGuard (JWT解析 → Redis → ctx.user)
+  → TenantGuard (校验租户存在/启用/未过期 → ctx.tenant / ctx.tenantId)
   → Handler: CreateQueryBuilder(schema, ctx.tenantId)
     → WHERE tenant_id = 1 AND ...
 ```
 
 ### API 端点
 
-| 端点 | 说明 |
-|------|------|
-| `GET /auth/tenants` | 获取当前用户可访问的租户列表 |
-| `POST /auth/switch-tenant` | 切换租户，返回新 JWT |
+| 端点 | 说明 | 可用模式 |
+|------|------|---------|
+| `GET /auth/tenants` | 获取当前用户可访问的租户列表 | 仅多租户 |
+| `POST /auth/switch-tenant` | 切换租户，返回新 JWT | 仅多租户 |
+| `POST /system/tenant` | 创建租户（自动关联创建者+复制角色+建管理员）| 仅多租户 |
+
+### 已知设计缺陷（多租户模式）
+
+1. **GetRoleMenuIdsAndBtnIds 跨租户泄漏**: 该函数获取用户所有 roleId（不分租户），导致菜单缓存包含其他租户角色的菜单。实际权限仍由 PermissionGuard 和各 API 的 tenant 过滤控制，但用户可能看到无权限的菜单条目。
+2. **system_user.tenantId vs system_user_tenant**: 用户表自身有 `tenantId`（创建时写入），同时通过 `system_user_tenant` 关联多个租户。用户列表按 `system_user.tenantId` 过滤，可能漏掉通过 `system_user_tenant` 跨租户关联的用户。
 
 ### 关键注意
 
 1. `tenant_id` 默认值为 1 — 存量数据自动归属默认租户
-2. **`drizzle-kit push` 必须在 TTY 终端执行** — 非 TTY 下 schema 冲突需要交互确认，会静默跳过
-3. junction 表（`system_user_role`、`system_role_menu`）不直接过滤，通过主表间接作用域
-4. 缓存键按租户隔离：`systemRole:{tenantId}`、`systemDeptTree:{tenantId}`
-5. 设计规范详见 `specs/multi-tenant/design.md`
+2. junction 表（`system_user_role`、`system_role_menu`）不直接过滤，通过主表间接作用域
+3. 注册用户默认无租户归属 → 登录被拒 → 需管理员在租户内创建用户或手动关联
+4. **`drizzle-kit push` 必须在 TTY 终端执行** — 非 TTY 下 schema 冲突需要交互确认，会静默跳过
+5. 缓存键按租户隔离：`systemRole:{tenantId}`、`systemDeptTree:{tenantId}`（多租户模式）
+6. 设计规范详见 `specs/multi-tenant/design.md`
 
 ---
 

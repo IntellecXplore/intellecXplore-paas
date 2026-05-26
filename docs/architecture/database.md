@@ -47,7 +47,7 @@ head:
 | delFlag | boolean | 删除标志 | false |
 | remark | varchar(255) | 备注 | null |
 
-> **多租户说明**：`tenantId` 默认为 1（默认租户）。查询/写入时由 Repository 层自动注入和过滤，业务代码通过 `CreateQueryBuilder(schema, ctx.tenantId)` 透传即可。详见 [多租户设计规范](/specs/multi-tenant/design)。
+> **多租户说明**：`tenantId` 默认为 1（默认租户）。**当前为单租户模式**（`config.multiTenant = false`），Repository 层不执行租户过滤，所有数据共享。查询/写入时 `getTenantIdFromCtx()` 返回 `undefined`。设为 `multiTenant: true` 可恢复多租户隔离，详见 [多租户设计规范](/specs/multi-tenant/design)。
 
 ## 数据库表分类
 
@@ -314,6 +314,8 @@ erDiagram
 - MinIO
 
 ### 多租户模块（Multi-Tenant）
+
+> **当前状态**：已降级为单租户模式。`system_tenant` 和 `system_user_tenant` 表存在但未启用关联逻辑。路由 `/auth/tenants`、`/auth/switch-tenant` 和 `/system/tenant/**` 未注册。设置 `config.multiTenant = true` 可恢复完整多租户功能。
 
 #### 21. system_tenant - 租户信息表
 

@@ -35,9 +35,21 @@
 
 ## 5. 新菜单 / 权限（checklist）
 
+**CRITICAL**：新建前端页面模块时，以下三步缺一不可：
+
+### 5a. 路由注册（前端）
+- `admin/src/router/modules/system.ts` 中添加 Vue Router 路由定义（path / name / component / meta）。
+
+### 5b. 菜单写入（数据库 — 必须执行！）
+- 向 `system_menu` 表 INSERT 菜单记录，`parentId` 指向正确的父菜单。
+- 向 `system_role_menu` 表 INSERT 权限关联（至少给 role_id=1 超级管理员）。
+- **实践**：写 seed 脚本后用 `bun run script/xxx.ts` 执行；或提供手执 SQL。
+- **常见父菜单**：`path=metadata, parent_id=3` 为"元数据管理"；其他父菜单参考 `seed-workflow-menu.ts` 的查找模式。
+
+### 5c. 权限标识对齐
 - 后端：新模块 `route.ts` 每条路由 `meta.permission` 与约定 `group:name:action` 一致（参见 `AI_CODE_EXAMPLES`）。
 - 前端：`v-auth` / `auth.hasAuth` 与上述字符串一致（见 `.cursor/rules/frontend.mdc`）。
-- DB 驱动菜单时：`system_menu`、按需 `system_menu_btn`、`system_role_menu` 与权限标识一致；需要时用只读 `query` 或 MCP schema 资源核对，勿臆造 ID。
+- 如需按钮级权限：在 `system_menu_btn` 表中增加记录。
 
 ---
 

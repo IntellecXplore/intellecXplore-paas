@@ -55,6 +55,7 @@
     "docker:logs": "docker logs elysia-admin"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.78",
     "@ai-sdk/openai-compatible": "^2.0.47",
     "@bull-board/api": "^6.21.3",
     "@bull-board/elysia": "^6.21.3",

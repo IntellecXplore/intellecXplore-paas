@@ -1,6 +1,10 @@
 # 多租户架构设计
 
 > 为 intellecXplore-paas 接入不同企业的业务系统提供数据隔离能力。
+>
+> **⚠️ 当前状态（2026-05-22）**：已降级为单租户模式。所有租户基础设施保留但未激活，
+> 通过 `config.multiTenant` 开关控制（默认 `false`）。降级方案详见 `.context/plan/calm-pondering-biscuit.md`。
+> 恢复路径：`multiTenant: true` + `cd server && bun run seed`。
 
 ---
 

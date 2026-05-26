@@ -267,7 +267,7 @@ CREATE INDEX idx_indexes_collection ON metadata_indexes(collection_id);
 |---|---|
 | UUID 主键 | bigserial 主键 |
 | auth / metadata schema 隔离 | public schema（与现有表同 schema） |
-| 有 tenant_id 字段 | 已引入：所有表继承 BaseSchema.tenantId（DEFAULT 1），Repository 层自动作用域，详见 specs/multi-tenant/design.md |
+| 有 tenant_id 字段 | 已引入：所有表继承 BaseSchema.tenantId（DEFAULT 1）。当前为单租户模式（`config.multiTenant = false`），租户过滤已停用；设 `multiTenant: true` 可恢复多租户，详见 specs/multi-tenant/design.md |
 | unique 字段名 | 改为 is_unique（避免 JS 保留字） |
 | primary_key 字段名 | 改为 is_primary_key |
 | TEXT[] 数组类型 | 改为 jsonb |
