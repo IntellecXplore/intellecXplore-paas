@@ -7,10 +7,10 @@ import { workflowInstanceSchema } from '@database/schema/workflow_instance';
 import { workflowStepExecutionSchema } from '@database/schema/workflow_step_execution';
 
 import { FindPage, FindOneByKey, SoftDeleteByKeys } from '@/core/database/repository';
-import { getToolSchemas } from '../agent/core/tool-registry';
+import { getToolSchemas } from '../../core/agent/tool-registry';
 import { workflowExecutor } from './executor';
 import { getWorkflowById } from './registry';
-import { createSSEEmitter } from '../agent/core/sse-emitter';
+import { createSSEEmitter } from '../../core/agent/sse-emitter';
 import { logger } from '@/shared/logger';
 
 // ============== Helpers ==============

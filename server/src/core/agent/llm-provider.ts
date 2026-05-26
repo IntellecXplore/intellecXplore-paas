@@ -15,7 +15,7 @@ export interface ProviderConfig {
  */
 export function createProvider(cfg: ProviderConfig): LanguageModel {
     if (cfg.provider === 'anthropic') {
-        // 动态导入，避免未安装时崩溃
+        // 动态导入，避免未安装时崩溃（@ai-sdk/anthropic 是可选依赖）
         const { createAnthropic } = require('@ai-sdk/anthropic');
         const anthropic = createAnthropic({
             apiKey: cfg.apiKey,

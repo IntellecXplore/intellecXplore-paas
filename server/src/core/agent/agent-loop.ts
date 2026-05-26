@@ -70,64 +70,49 @@ export async function runAgentLoop(
         let streamError: string | null = null;
 
         // 消费 fullStream — AI SDK 自动处理 tool-call / tool-result 循环
+        const partHandlers: Record<string, (part: any) => void> = {
+            'text-delta': (part) => {
+                const text = part.text ?? part.delta ?? '';
+                if (text) emitter.emit('text-delta', { content: text });
+            },
+            'reasoning-delta': (part) => {
+                const text = part.text ?? part.delta ?? '';
+                if (text) emitter.emit('reasoning-delta', { content: text });
+            },
+            'tool-call': (part) => {
+                emitter.emit('tool-call', {
+                    toolCallId: part.toolCallId,
+                    toolName: part.toolName,
+                    args: part.input,
+                });
+            },
+            'tool-result': (part) => {
+                emitter.emit('tool-result', {
+                    toolCallId: part.toolCallId,
+                    toolName: part.toolName,
+                    result: part.output,
+                });
+            },
+            'tool-error': (part) => {
+                const errMsg = part.errorText || 'Tool execution error';
+                emitter.emit('tool-result', {
+                    toolCallId: part.toolCallId,
+                    toolName: part.toolName,
+                    result: { error: errMsg },
+                });
+            },
+            'error': (part) => {
+                const msg = part.errorText || part.message || part.error || JSON.stringify(part);
+                streamError = msg;
+                emitter.emit('error', { message: msg });
+            },
+        };
+
         for await (const part of result.fullStream) {
             if (abortSignal.aborted) break;
-
-            switch (part.type) {
-                case 'text-delta': {
-                    const text = (part as any).text ?? (part as any).delta ?? '';
-                    if (text) {
-                        emitter.emit('text-delta', { content: text });
-                    }
-                    break;
-                }
-
-                case 'reasoning-delta': {
-                    const text = (part as any).text ?? (part as any).delta ?? '';
-                    if (text) {
-                        emitter.emit('reasoning-delta', { content: text });
-                    }
-                    break;
-                }
-
-                case 'tool-call': {
-                    emitter.emit('tool-call', {
-                        toolCallId: part.toolCallId,
-                        toolName: part.toolName,
-                        args: (part as any).input,
-                    });
-                    break;
-                }
-
-                case 'tool-result': {
-                    emitter.emit('tool-result', {
-                        toolCallId: part.toolCallId,
-                        toolName: part.toolName,
-                        result: (part as any).output,
-                    });
-                    break;
-                }
-
-                case 'tool-error': {
-                    const errMsg = (part as any).errorText || 'Tool execution error';
-                    emitter.emit('tool-result', {
-                        toolCallId: part.toolCallId,
-                        toolName: part.toolName,
-                        result: { error: errMsg },
-                    });
-                    break;
-                }
-
-                case 'error': {
-                    // 提取尽可能多的错误信息
-                    const err = part as any;
-                    streamError = err.errorText || err.message || err.error || JSON.stringify(err);
-                    emitter.emit('error', { message: streamError });
-                    break;
-                }
-
-                // text-start, text-end, reasoning-start, reasoning-end,
-                // step-start, finish, tool-input-* — 不需要 SSE 事件
+            const handler = partHandlers[part.type];
+            if (handler) {
+                handler(part);
             }
         }
 

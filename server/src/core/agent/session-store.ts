@@ -1,8 +1,8 @@
 import type { ModelMessage } from 'ai';
-import { Set, Get, Del, Keys } from '@/core/agent/core/database/redis';
-import { GenerateUUID } from '@/core/agent/shared/uuid';
-import { CacheEnum } from '@/core/agent/constants/enum';
-import config from '@/core/agent/config';
+import { Set, Get, Del, Keys } from '@/core/database/redis';
+import { GenerateUUID } from '@/shared/uuid';
+import { CacheEnum } from '@/constants/enum';
+import config from '@/config';
 
 // ============== Types ==============
 

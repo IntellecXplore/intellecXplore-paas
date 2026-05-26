@@ -16,7 +16,7 @@ queueManager.registerWorker({
 
         // cron 触发：先创建实例再执行
         if (type === 'workflow' && definitionId) {
-            const { workflowExecutor } = await import('@/modules/workflow/executor');
+            const { workflowExecutor } = await import('@/modules/system-workflow/executor');
             const pg = (await import('@/core/database/pg')).default;
             const {
                 workflowDefinitionSchema,
@@ -63,7 +63,7 @@ queueManager.registerWorker({
 
         // 直接执行已有实例
         if (instanceId) {
-            const { workflowExecutor } = await import('@/modules/workflow/executor');
+            const { workflowExecutor } = await import('@/modules/system-workflow/executor');
             await workflowExecutor.execute(instanceId);
             return { success: true, instanceId };
         }

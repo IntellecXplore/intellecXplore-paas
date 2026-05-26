@@ -57,45 +57,44 @@ function resolveExpression(expr: string, ctx: WorkflowContext): string {
     }
 }
 
+const PATH_PREFIXES: Record<string, (ctx: WorkflowContext) => unknown> = {
+    input: (ctx) => ctx.input,
+    global: (ctx) => ({
+        userId: ctx.userId,
+        userName: ctx.userName,
+        permissions: ctx.permissions,
+        roles: ctx.roles,
+    }),
+};
+
 function resolvePath(path: string, ctx: WorkflowContext): unknown {
     const parts = path.split('.');
     let current: unknown;
 
-    // 前缀路由
-    if (parts[0] === 'input') {
-        current = ctx.input;
-        parts.shift();
-    } else if (parts[0] === 'step') {
-        parts.shift(); // 跳过 'step'
-    } else if (parts[0] === 'global') {
-        current = {
-            userId: ctx.userId,
-            userName: ctx.userName,
-            permissions: ctx.permissions,
-            roles: ctx.roles,
-        };
-        parts.shift();
-    } else if (parts[0] === 'prev') {
-        // {{prev}} = 上一个步骤的完整输出（特殊语法）
+    if (parts[0] === 'prev') {
         throw new Error('{{prev}} not supported in path resolution — use {{step.stepId.output}}');
-    } else {
-        // 可能是 stepId 直接引用：stepId.output.field
-        const stepId = parts[0];
-        const stepOutput = ctx.stepOutputs[stepId];
-        if (stepOutput !== undefined) {
-            current = stepOutput;
-            parts.shift();
-        } else {
-            throw new Error(`Step "${stepId}" output not found in context`);
-        }
     }
 
-    // 遍历剩余的路径段
+    const prefixFn = PATH_PREFIXES[parts[0]];
+    if (prefixFn) {
+        current = prefixFn(ctx);
+        parts.shift();
+    } else if (parts[0] === 'step') {
+        parts.shift();
+    } else {
+        const stepId = parts[0];
+        const stepOutput = ctx.stepOutputs[stepId];
+        if (stepOutput === undefined) {
+            throw new Error(`Step "${stepId}" output not found in context`);
+        }
+        current = stepOutput;
+        parts.shift();
+    }
+
     for (const part of parts) {
         if (current === undefined || current === null) {
             throw new Error(`Null/undefined at "${part}" in path: ${path}`);
         }
-        // 处理数组索引：field[0]
         const arrayMatch = part.match(/^(\w+)\[(\d+)\]$/);
         if (arrayMatch) {
             current = (current as any)[arrayMatch[1]]?.[parseInt(arrayMatch[2])];
@@ -110,11 +109,8 @@ function resolvePath(path: string, ctx: WorkflowContext): unknown {
 function formatValue(val: unknown): string {
     if (val === undefined || val === null) return '';
     if (typeof val === 'string') return val;
-    try {
-        return JSON.stringify(val);
-    } catch {
-        return String(val);
-    }
+    if (typeof val === 'bigint') return String(val);
+    return JSON.stringify(val);
 }
 
 /**

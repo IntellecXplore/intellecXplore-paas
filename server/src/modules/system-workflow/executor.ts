@@ -7,8 +7,8 @@ import { workflowStepExecutionSchema } from '@database/schema/workflow_step_exec
 
 import { getWorkflow, getWorkflowById } from './registry';
 import { resolveTemplate } from './template-engine';
-import { getTool, setActiveToolContext, clearActiveToolContext } from '../agent/core/tool-registry';
-import { createProvider } from '../agent/core/llm-provider';
+import { getTool, setActiveToolContext, clearActiveToolContext } from '../../core/agent/tool-registry';
+import { createProvider } from '../../core/agent/llm-provider';
 import config from '@/config';
 
 import type {
@@ -409,8 +409,11 @@ export class WorkflowExecutor {
                 return this.executeWaitStep(step as WaitStep);
             case 'sub_workflow':
                 return this.executeSubWorkflowStep(step as SubWorkflowStep, ctx);
-            default:
-                throw new Error(`Unknown step type: ${(step as any).type}`);
+            default: {
+                const err = new Error(`Unknown step type: ${(step as any).type}`);
+                (err as any).retryable = false;
+                throw err;
+            }
         }
     }
 
@@ -419,7 +422,9 @@ export class WorkflowExecutor {
     private async executeToolStep(step: ToolStep, ctx: WorkflowContext): Promise<unknown> {
         const reg = getTool(step.tool);
         if (!reg) {
-            throw new Error(`Tool "${step.tool}" not registered`);
+            const err = new Error(`Tool "${step.tool}" not registered`);
+            (err as any).retryable = false;
+            throw err;
         }
 
         // 解析 input 中的模板变量
@@ -447,6 +452,13 @@ export class WorkflowExecutor {
             } catch {
                 return { result };
             }
+        } catch (e: any) {
+            // 分类常见不可重试的工具错误
+            const msg = e.message || '';
+            if (/schema|validation|permission|unauthorized/i.test(msg)) {
+                (e as any).retryable = false;
+            }
+            throw e;
         } finally {
             clearActiveToolContext();
         }
@@ -472,7 +484,7 @@ export class WorkflowExecutor {
         let tools: Record<string, any> | undefined;
         if (step.tools && step.tools.length > 0) {
             // 复用 ToolRegistry 的 buildToolSet
-            const { buildToolSet } = await import('../agent/core/tool-registry');
+            const { buildToolSet } = await import('../../core/agent/tool-registry');
             tools = buildToolSet(step.tools) as any;
         }
 
@@ -620,8 +632,11 @@ export class WorkflowExecutor {
                 throw err;
             }
 
-            default:
-                throw new Error(`Unknown wait type: ${(step as any).waitType}`);
+            default: {
+                const err = new Error(`Unknown wait type: ${(step as any).waitType}`);
+                (err as any).retryable = false;
+                throw err;
+            }
         }
     }
 
@@ -646,7 +661,9 @@ export class WorkflowExecutor {
         // 简化实现：直接执行
         const subDef = await getWorkflow(step.workflowId);
         if (!subDef) {
-            throw new Error(`Sub-workflow "${step.workflowId}" not found`);
+            const err = new Error(`Sub-workflow "${step.workflowId}" not found`);
+            (err as any).retryable = false;
+            throw err;
         }
 
         // 这里需要等待子工作流，但为了避免循环依赖，返回简单结果
@@ -727,8 +744,16 @@ export class WorkflowExecutor {
             .where(eq(workflowInstanceSchema.id, instanceId))
             .limit(1);
 
-        if (!instance) throw new Error(`Instance ${instanceId} not found`);
-        if (instance.status === 'cancelled') throw new Error('Workflow was cancelled');
+        if (!instance) {
+            const err = new Error(`Instance ${instanceId} not found`);
+            (err as any).retryable = false;
+            throw err;
+        }
+        if (instance.status === 'cancelled') {
+            const err = new Error('Workflow was cancelled');
+            (err as any).retryable = false;
+            throw err;
+        }
         if (instance.status === 'paused') {
             const err = new Error('Workflow is paused');
             (err as any).name = 'WorkflowPausedError';
@@ -762,81 +787,67 @@ export class WorkflowExecutor {
         error: Error,
         retryPolicy: RetryPolicy,
     ): boolean {
-        // Schema 校验错误不重试
-        if (error.message?.includes('Schema') || error.message?.includes('validation')) {
-            return false;
-        }
-        // 权限错误不重试
-        if (error.message?.includes('permission') || error.message?.includes('unauthorized')) {
-            return false;
-        }
-        // 工具不存在不重试
-        if (error.message?.includes('not registered')) {
-            return false;
-        }
-        // 白名单匹配
+        // 错误源头已标注不可重试（如 schema/validation/permission/not-found）
+        if ((error as any).retryable === false) return false;
+
+        // 白名单匹配（向后兼容，支持 retryableErrors 配置自定义可重试模式）
         if (retryPolicy.retryableErrors && retryPolicy.retryableErrors.length > 0) {
             return retryPolicy.retryableErrors.some(pattern =>
                 error.message?.includes(pattern),
             );
         }
 
-        // 默认可重试：网络错误、超时、LLM API 错误
+        // 默认可重试
         return true;
     }
 }
 
 // ============== Condition Evaluator ==============
 
-function evaluateCondition(cond: Condition, ctx: WorkflowContext): boolean {
-    if ('eq' in cond) {
+type CondEvaluator = (cond: any, ctx: WorkflowContext) => boolean;
+
+const COND_EVALUATORS: Record<string, CondEvaluator> = {
+    eq: (cond, ctx) => {
         const [path, expected] = cond.eq;
-        const val = resolveConditionValue(path, ctx);
-        return val === expected;
-    }
-    if ('neq' in cond) {
+        return resolveConditionValue(path, ctx) === expected;
+    },
+    neq: (cond, ctx) => {
         const [path, expected] = cond.neq;
-        const val = resolveConditionValue(path, ctx);
-        return val !== expected;
-    }
-    if ('gt' in cond) {
+        return resolveConditionValue(path, ctx) !== expected;
+    },
+    gt: (cond, ctx) => {
         const [path, expected] = cond.gt;
-        const val = Number(resolveConditionValue(path, ctx));
-        return val > expected;
-    }
-    if ('lt' in cond) {
+        return Number(resolveConditionValue(path, ctx)) > expected;
+    },
+    lt: (cond, ctx) => {
         const [path, expected] = cond.lt;
-        const val = Number(resolveConditionValue(path, ctx));
-        return val < expected;
-    }
-    if ('gte' in cond) {
+        return Number(resolveConditionValue(path, ctx)) < expected;
+    },
+    gte: (cond, ctx) => {
         const [path, expected] = cond.gte;
-        const val = Number(resolveConditionValue(path, ctx));
-        return val >= expected;
-    }
-    if ('lte' in cond) {
+        return Number(resolveConditionValue(path, ctx)) >= expected;
+    },
+    lte: (cond, ctx) => {
         const [path, expected] = cond.lte;
-        const val = Number(resolveConditionValue(path, ctx));
-        return val <= expected;
-    }
-    if ('in' in cond) {
+        return Number(resolveConditionValue(path, ctx)) <= expected;
+    },
+    in: (cond, ctx) => {
         const [path, values] = cond.in;
-        const val = resolveConditionValue(path, ctx);
-        return values.includes(val);
-    }
-    if ('contains' in cond) {
+        return values.includes(resolveConditionValue(path, ctx));
+    },
+    contains: (cond, ctx) => {
         const [path, substr] = cond.contains;
-        const val = String(resolveConditionValue(path, ctx));
-        return val.includes(substr);
-    }
-    if ('and' in cond) {
-        return cond.and.every(c => evaluateCondition(c, ctx));
-    }
-    if ('or' in cond) {
-        return cond.or.some(c => evaluateCondition(c, ctx));
-    }
-    if ('not' in cond) {
-        return !evaluateCondition(cond.not, ctx);
+        return String(resolveConditionValue(path, ctx)).includes(substr);
+    },
+    and: (cond, ctx) => cond.and.every((c: Condition) => evaluateCondition(c, ctx)),
+    or: (cond, ctx) => cond.or.some((c: Condition) => evaluateCondition(c, ctx)),
+    not: (cond, ctx) => !evaluateCondition(cond.not, ctx),
+};
+
+function evaluateCondition(cond: Condition, ctx: WorkflowContext): boolean {
+    for (const key of Object.keys(cond)) {
+        const fn = COND_EVALUATORS[key];
+        if (fn) return fn(cond, ctx);
     }
     return false;
 }
