@@ -129,6 +129,10 @@ function parseEnumOptions(field: any): { label: string; value: string }[] {
   return []
 }
 
+function getSearchType(fieldType: string): string {
+  return (fieldType === 'boolean' || fieldType === 'enum') ? 'select' : 'input'
+}
+
 // Auto-generate search bar items
 const searchItems = computed<SearchFormItem[]>(() => {
   return fields.value
@@ -138,10 +142,7 @@ const searchItems = computed<SearchFormItem[]>(() => {
       const item: SearchFormItem = {
         key: f.columnName,
         label: f.label || f.columnName,
-        type: f.type === 'integer' || f.type === 'decimal' ? 'input'
-          : f.type === 'boolean' ? 'select'
-            : f.type === 'enum' ? 'select'
-              : 'input',
+        type: getSearchType(f.type),
         props: {
           placeholder: `请输入${f.label || f.columnName}`,
           clearable: true,
@@ -225,7 +226,7 @@ async function init() {
     tableName.value = collection.tableName
 
     const fieldRes = await fetchGetFieldList({ collectionId: cid, pageSize: 999 }) as any
-    fields.value = fieldRes?.list || fieldRes?.records || fieldRes || []
+    fields.value = fieldRes?.list || fieldRes || []
     ready.value = true
 
     // Initialize search form

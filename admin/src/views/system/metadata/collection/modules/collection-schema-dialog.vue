@@ -19,7 +19,6 @@
       <ElFormItem label="命名空间" prop="namespace">
         <ElSelect v-model="baseForm.namespace" style="width: 140px">
           <ElOption label="业务" value="business" />
-          <ElOption label="系统" value="system" />
           <ElOption label="自定义" value="custom" />
         </ElSelect>
       </ElFormItem>
@@ -33,6 +32,15 @@
       数据库配置
       <span class="text-xs text-gray-400 ml-2">（不填则使用系统默认数据库）</span>
     </ElDivider>
+    <ElForm v-if="savedDbConfigs.length > 0" label-width="120px" class="mb-2">
+      <ElFormItem label="选择已保存的配置">
+        <ElSelect v-model="selectedDbConfigId" placeholder="选择已保存的数据库配置快速填充" clearable
+          @change="onDbConfigSelect" style="width: 400px">
+          <ElOption v-for="item in savedDbConfigs" :key="item.id" :label="item.name" :value="item.id as number" />
+        </ElSelect>
+        <span class="text-xs text-gray-400 ml-2">选择后字段仍可手动修改</span>
+      </ElFormItem>
+    </ElForm>
     <ElForm :model="dbForm" label-width="90px" :inline="true">
       <ElFormItem label="主机地址">
         <ElInput v-model="dbForm.host" placeholder="localhost" style="width: 180px" />
@@ -51,6 +59,10 @@
       </ElFormItem>
       <ElFormItem label="Schema">
         <ElInput v-model="dbForm.schema" placeholder="public" style="width: 160px" />
+      </ElFormItem>
+      <ElFormItem label="SSL">
+        <ElSwitch v-model="dbForm.ssl" />
+        <span class="ml-2 text-xs text-gray-400">云数据库通常需开启</span>
       </ElFormItem>
       <ElFormItem>
         <ElButton size="small" @click="handleTestConnection" :loading="testing">
@@ -147,6 +159,7 @@
 import { Plus, Delete } from '@element-plus/icons-vue'
 import type { FormRules } from 'element-plus'
 import { fetchCreateCollection, fetchCreateCollectionWithFields, fetchTestConnection, fetchTestSchema, fetchSystemDbConfig } from '@/api/metadata/collection'
+import { fetchGetAllDatabaseConfigs } from '@/api/metadata/database-config'
 
 interface FieldDef {
   columnName: string
@@ -199,11 +212,44 @@ const defaultDbForm = () => ({
   password: '',
   database: '',
   schema: 'collection' as string,
+  ssl: false,
 })
 
 const dbForm = reactive(defaultDbForm())
 const testing = ref(false)
 const testingSchema = ref(false)
+
+// 已保存的数据库配置
+const savedDbConfigs = ref<Api.MetadataDatabaseConfig.DatabaseConfigItem[]>([])
+const selectedDbConfigId = ref<number | ''>('')
+
+function fillDbFormFromConfig(config: Api.MetadataDatabaseConfig.DatabaseConfigItem) {
+  dbForm.host = config.host
+  dbForm.port = config.port
+  dbForm.username = config.username
+  dbForm.password = config.password || ''
+  dbForm.database = config.database
+  dbForm.schema = config.schema || 'public'
+  dbForm.ssl = !!(config as any).ssl
+}
+
+function onDbConfigSelect(val: number | '') {
+  if (val === '' || val === undefined) {
+    Object.assign(dbForm, defaultDbForm())
+    return
+  }
+  const config = savedDbConfigs.value.find(c => c.id === val)
+  if (config) fillDbFormFromConfig(config)
+}
+
+async function loadSavedDbConfigs() {
+  try {
+    const res: any = await fetchGetAllDatabaseConfigs()
+    if (Array.isArray(res)) {
+      savedDbConfigs.value = res
+    }
+  } catch { /* 保持空列表 */ }
+}
 
 const baseRules: FormRules = {
   tableName: [
@@ -263,6 +309,7 @@ function getStorageConfig() {
     password: dbForm.password,
     database: dbForm.database,
     schema: dbForm.schema || 'public',
+    ssl: dbForm.ssl,
   }
 }
 
@@ -400,6 +447,7 @@ watch(() => props.visible, async (val) => {
         dbForm.database = res.database
       }
     } catch { /* 保持默认值 */ }
+    loadSavedDbConfigs()
   }
 })
 
@@ -407,6 +455,7 @@ const handleClosed = () => {
   Object.assign(baseForm, defaultBaseForm())
   Object.assign(dbForm, defaultDbForm())
   fieldList.value = []
+  selectedDbConfigId.value = ''
   baseFormRef.value?.resetFields()
   loading.value = false
 }

@@ -208,6 +208,4 @@ export interface HeaderBarFeatureConfig {
   settings: FeatureConfigItem
   /** 主题切换 */
   themeToggle: FeatureConfigItem
-  /** 租户切换器 */
-  tenantSwitcher: FeatureConfigItem
 }

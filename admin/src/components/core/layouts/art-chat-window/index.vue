@@ -275,58 +275,45 @@ const getToolLabel = (name: string): string => {
   return labels[name] || name
 }
 
-/** 提取工具结果的一行摘要 */
+/** 工具结果摘要提取器，按 toolName 注册，新增工具只需追加条目 */
+const TOOL_SUMMARIES: Record<string, (obj: Record<string, any>) => string> = {
+  create_collection: (obj) => {
+    const c = obj.created || {}
+    return `表 ${c.tableName}（${c.label}）创建成功 · 状态: draft`
+  },
+  add_fields_to_collection: (obj) => `添加了 ${obj.added?.length || 0} 个字段`,
+  publish_collection: (obj) => (obj.success ? '数据库建表完成 · 状态: staging' : '建表失败'),
+  deploy_collection: (obj) => (obj.success ? '部署上线完成 · 状态: active' : '部署失败'),
+  query_collection_data: (obj) => `查到 ${obj.total ?? obj.list?.length ?? 0} 条记录`,
+  insert_collection_data: () => '数据已插入',
+  update_collection_data: () => '数据已更新',
+  delete_collection_data: (obj) => obj.message || '数据已删除',
+  delete_collection: (obj) => obj.message || '表已删除',
+  list_collections: (obj) => `共 ${obj.total ?? obj.collections?.length ?? 0} 个元数据表`,
+  get_collection_detail: (obj) => `${obj.collection?.label || ''} — ${obj.fieldCount || 0} 个字段`,
+  query_users: (obj) => `查到 ${obj.total ?? obj.list?.length ?? 0} 个用户`,
+  list_menus: (obj) => `共 ${obj.total ?? obj.menus?.length ?? 0} 个菜单`,
+  query_dict_data: (obj) => `查到 ${obj.total ?? obj.data?.length ?? 0} 条字典数据`,
+  get_user_permissions: (obj) => `用户有 ${obj.permissionCount ?? 0} 个权限，${obj.roleCount ?? 0} 个角色`,
+  create_menu: (obj) => (obj.success ? '菜单创建成功' : '菜单创建失败'),
+  get_dynamic_page_info: (obj) =>
+    obj.matchedCollection
+      ? `表 ${obj.matchedCollection.tableName} → 推荐路径 ${obj.matchedCollection.suggestedMenu?.path || ''}`
+      : '已获取动态页面路由信息',
+  trace_relation_path: (obj) => {
+    if (obj.paths?.length) return `找到 ${obj.paths.length} 条路径`
+    if (obj.reachableFromSource) return `${obj.sourceTable} 可达 ${obj.reachableFromSource.length} 个表`
+    return '未找到路径'
+  },
+}
+
 const getToolSummary = (toolName: string, result: string): string => {
   try {
     const obj = JSON.parse(result)
     if (obj.message) return obj.message
     if (obj.error) return ''
-    switch (toolName) {
-      case 'create_collection': {
-        const c = obj.created || {}
-        return `表 ${c.tableName}（${c.label}）创建成功 · 状态: draft`
-      }
-      case 'add_fields_to_collection':
-        return `添加了 ${obj.added?.length || 0} 个字段`
-      case 'publish_collection':
-        return obj.success ? '数据库建表完成 · 状态: staging' : '建表失败'
-      case 'deploy_collection':
-        return obj.success ? '部署上线完成 · 状态: active' : '部署失败'
-      case 'query_collection_data':
-        return `查到 ${obj.total ?? obj.records?.length ?? 0} 条记录`
-      case 'insert_collection_data':
-        return '数据已插入'
-      case 'update_collection_data':
-        return '数据已更新'
-      case 'delete_collection_data':
-        return obj.message || '数据已删除'
-      case 'delete_collection':
-        return obj.message || '表已删除'
-      case 'list_collections':
-        return `共 ${obj.total ?? obj.collections?.length ?? 0} 个元数据表`
-      case 'get_collection_detail':
-        return `${obj.collection?.label || ''} — ${obj.fieldCount || 0} 个字段`
-      case 'query_users':
-        return `查到 ${obj.total ?? obj.list?.length ?? 0} 个用户`
-      case 'list_menus':
-        return `共 ${obj.total ?? obj.menus?.length ?? 0} 个菜单`
-      case 'query_dict_data':
-        return `查到 ${obj.total ?? obj.data?.length ?? 0} 条字典数据`
-      case 'get_user_permissions':
-        return `用户有 ${obj.permissionCount ?? 0} 个权限，${obj.roleCount ?? 0} 个角色`
-      case 'create_menu':
-        return obj.success ? '菜单创建成功' : '菜单创建失败'
-      case 'get_dynamic_page_info':
-        return obj.matchedCollection
-          ? `表 ${obj.matchedCollection.tableName} → 推荐路径 ${obj.matchedCollection.suggestedMenu?.path || ''}`
-          : '已获取动态页面路由信息'
-      case 'trace_relation_path':
-        if (obj.paths?.length) return `找到 ${obj.paths.length} 条路径`
-        if (obj.reachableFromSource) return `${obj.sourceTable} 可达 ${obj.reachableFromSource.length} 个表`
-        return '未找到路径'
-      default:
-        return ''
-    }
+    const fn = TOOL_SUMMARIES[toolName]
+    return fn ? fn(obj) : ''
   } catch {
     return ''
   }
@@ -462,58 +449,52 @@ const sendMessage = async (): Promise<void> => {
   }
 }
 
+const SSE_HANDLERS: Record<string, (data: any, aiMsg: DisplayMessage) => void> = {
+  meta: (data) => {
+    if (data.conversationId) conversationId.value = data.conversationId
+  },
+  'text-delta': (data, aiMsg) => {
+    aiMsg.content += data.content || ''
+    scrollToBottom()
+  },
+  'reasoning-delta': (data, aiMsg) => {
+    if (data.content) {
+      aiMsg.reasoning += data.content
+      scrollToBottom()
+    }
+  },
+  'tool-call': (data, aiMsg) => {
+    if (!aiMsg.toolCalls) aiMsg.toolCalls = []
+    aiMsg.toolCalls.push({
+      id: data.toolCallId || `${data.toolName}-${Date.now()}`,
+      name: data.toolName,
+      status: 'running',
+    })
+    scrollToBottom()
+  },
+  'tool-result': (data, aiMsg) => {
+    if (aiMsg.toolCalls) {
+      const tool = aiMsg.toolCalls.find(
+        (t) => t.name === data.toolName && t.status === 'running',
+      )
+      if (tool) {
+        tool.status = 'done'
+        tool.result = typeof data.result === 'string' ? data.result : JSON.stringify(data.result)
+      }
+    }
+    scrollToBottom()
+  },
+  'error': (data, aiMsg) => {
+    aiMsg.content += `\n\n❌ ${data.message || '处理错误'}`
+    scrollToBottom()
+  },
+  'done': () => {},
+  'step-finish': () => {},
+}
+
 const handleSSEEvent = (event: string, data: any, aiMsg: DisplayMessage) => {
-  switch (event) {
-    case 'meta':
-      if (data.conversationId) conversationId.value = data.conversationId
-      break
-
-    case 'text-delta':
-      aiMsg.content += data.content || ''
-      scrollToBottom()
-      break
-
-    case 'reasoning-delta':
-      if (data.content) {
-        aiMsg.reasoning += data.content
-        scrollToBottom()
-      }
-      break
-
-    case 'tool-call': {
-      if (!aiMsg.toolCalls) aiMsg.toolCalls = []
-      aiMsg.toolCalls.push({
-        id: data.toolCallId || `${data.toolName}-${Date.now()}`,
-        name: data.toolName,
-        status: 'running',
-      })
-      scrollToBottom()
-      break
-    }
-
-    case 'tool-result': {
-      if (aiMsg.toolCalls) {
-        const tool = aiMsg.toolCalls.find(
-          (t) => t.name === data.toolName && t.status === 'running',
-        )
-        if (tool) {
-          tool.status = 'done'
-          tool.result = typeof data.result === 'string' ? data.result : JSON.stringify(data.result)
-        }
-      }
-      scrollToBottom()
-      break
-    }
-
-    case 'error':
-      aiMsg.content += `\n\n❌ ${data.message || '处理错误'}`
-      scrollToBottom()
-      break
-
-    case 'done':
-    case 'step-finish':
-      break
-  }
+  const handler = SSE_HANDLERS[event]
+  if (handler) handler(data, aiMsg)
 }
 
 const newConversation = (): void => {

@@ -3,6 +3,18 @@
     @closed="handleClosed">
     <ArtForm ref="formRef" v-model="formData" :items="formItems" :rules="rules" :span="24" label-width="100px"
       :show-reset="false" :show-submit="false" />
+    <ElDivider content-position="left" v-if="dialogType === 'add'">
+      数据库配置
+      <span class="text-xs text-gray-400 ml-2">（可选，不选则使用系统默认数据库）</span>
+    </ElDivider>
+    <ElForm v-if="dialogType === 'add'" label-width="100px">
+      <ElFormItem label="选择数据源">
+        <ElSelect v-model="selectedDbConfigId" placeholder="选择已保存的数据库配置" clearable style="width: 360px"
+          @change="onDbConfigSelect">
+          <ElOption v-for="item in savedDbConfigs" :key="item.id" :label="item.name" :value="item.id as number" />
+        </ElSelect>
+      </ElFormItem>
+    </ElForm>
     <template #footer>
       <div class="dialog-footer">
         <ElButton @click="dialogVisible = false">取消</ElButton>
@@ -17,6 +29,7 @@ import type { FormRules } from 'element-plus'
 import type { FormItem } from '@/components/core/forms/art-form/index.vue'
 import ArtForm from '@/components/core/forms/art-form/index.vue'
 import { fetchCreateCollection, fetchUpdateCollection, fetchGetCollectionDetail } from '@/api/metadata/collection'
+import { fetchGetAllDatabaseConfigs } from '@/api/metadata/database-config'
 
 interface Props {
   visible: boolean
@@ -51,6 +64,28 @@ const defaultFormData = () => ({
 })
 
 const formData = reactive(defaultFormData())
+
+// 已保存的数据库配置选择
+const savedDbConfigs = ref<Api.MetadataDatabaseConfig.DatabaseConfigItem[]>([])
+const selectedDbConfigId = ref<number | ''>('')
+const selectedDbConfig = ref<Api.MetadataDatabaseConfig.DatabaseConfigItem | null>(null)
+
+function onDbConfigSelect(val: number | '') {
+  if (val === '' || val === undefined) {
+    selectedDbConfig.value = null
+    return
+  }
+  selectedDbConfig.value = savedDbConfigs.value.find(c => c.id === val) || null
+}
+
+async function loadSavedDbConfigs() {
+  try {
+    const res: any = await fetchGetAllDatabaseConfigs()
+    if (Array.isArray(res)) {
+      savedDbConfigs.value = res
+    }
+  } catch { /* keep empty */ }
+}
 
 const formItems = computed<FormItem[]>(() => [
   {
@@ -94,7 +129,6 @@ const formItems = computed<FormItem[]>(() => [
       placeholder: '请选择命名空间',
       options: [
         { label: '业务', value: 'business' },
-        { label: '系统', value: 'system' },
         { label: '自定义', value: 'custom' },
       ]
     }
@@ -128,6 +162,7 @@ watch(
   (visible) => {
     if (visible) {
       nextTick(() => { initFormData() })
+      if (props.type === 'add') loadSavedDbConfigs()
     }
   }
 )
@@ -138,7 +173,18 @@ const handleSubmit = async () => {
     try {
       loading.value = true
       if (dialogType.value === 'add') {
-        await fetchCreateCollection(formData)
+        const payload = { ...formData }
+        if (selectedDbConfig.value) {
+          payload.storageConfig = {
+            host: selectedDbConfig.value.host,
+            port: selectedDbConfig.value.port,
+            username: selectedDbConfig.value.username,
+            password: selectedDbConfig.value.password,
+            database: selectedDbConfig.value.database,
+            schema: selectedDbConfig.value.schema || 'public',
+          }
+        }
+        await fetchCreateCollection(payload)
       } else {
         await fetchUpdateCollection(formData)
       }
@@ -154,5 +200,7 @@ const handleSubmit = async () => {
 
 const handleClosed = () => {
   formRef.value?.reset()
+  selectedDbConfigId.value = ''
+  selectedDbConfig.value = null
 }
 </script>

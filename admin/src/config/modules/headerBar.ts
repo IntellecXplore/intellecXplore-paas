@@ -58,10 +58,6 @@ export const headerBarConfig: HeaderBarFeatureConfig = {
     enabled: true,
     description: '主题切换功能（明暗主题）'
   },
-  tenantSwitcher: {
-    enabled: true,
-    description: '租户切换功能，多租户环境下切换当前工作租户'
-  }
 }
 
 export default headerBarConfig

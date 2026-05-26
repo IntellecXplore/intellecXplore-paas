@@ -37,7 +37,7 @@ const collectionOptions = ref<{ label: string; value: number }[]>([])
 async function loadCollectionOptions() {
   try {
     const res = await fetchGetCollectionList({ status: 'active', pageSize: 999 }) as any
-    const list = res?.list || res?.records || []
+    const list = res?.list || []
     collectionOptions.value = list.map((c: any) => ({
       label: `${c.label} (${c.tableName})`,
       value: c.id,

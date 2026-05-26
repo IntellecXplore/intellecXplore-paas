@@ -57,14 +57,67 @@ export const systemRoutes: AppRouteRecord = {
       }
     },
     {
-      path: 'tenant',
-      name: 'Tenant',
-      component: '/system/tenant',
+      path: 'integration',
+      name: 'Integration',
+      redirect: '/system/integration/source',
       meta: {
-        title: 'menus.system.tenant',
+        title: '数据集成',
+        icon: 'ri:link',
         keepAlive: true,
-        roles: ['SYS_ADMIN']
-      }
+        roles: ['R_SUPER', 'R_ADMIN']
+      },
+      children: [
+        {
+          path: 'source',
+          name: 'IntegrationSource',
+          component: '/system/integration/source',
+          meta: {
+            title: '数据源管理',
+            keepAlive: true,
+            roles: ['R_SUPER', 'R_ADMIN']
+          }
+        },
+        {
+          path: 'task',
+          name: 'IntegrationTask',
+          component: '/system/integration/task',
+          meta: {
+            title: '同步任务',
+            keepAlive: true,
+            roles: ['R_SUPER', 'R_ADMIN']
+          }
+        },
+        {
+          path: 'log',
+          name: 'IntegrationLog',
+          component: '/system/integration/log',
+          meta: {
+            title: '同步日志',
+            keepAlive: true,
+            roles: ['R_SUPER', 'R_ADMIN']
+          }
+        },
+        {
+          path: 'object',
+          name: 'IntegrationObject',
+          component: '/system/integration/object',
+          meta: {
+            title: '数据对象',
+            keepAlive: true,
+            roles: ['R_SUPER', 'R_ADMIN']
+          }
+        },
+        {
+          path: 'mapping',
+          name: 'IntegrationMapping',
+          component: '/system/integration/mapping',
+          meta: {
+            title: '字段映射',
+            keepAlive: true,
+            roles: ['R_SUPER', 'R_ADMIN']
+          }
+        }
+      ]
     },
     {
       path: 'metadata',
@@ -83,6 +136,16 @@ export const systemRoutes: AppRouteRecord = {
           component: '/system/metadata/collection',
           meta: {
             title: '数据表管理',
+            keepAlive: true,
+            roles: ['R_SUPER', 'R_ADMIN']
+          }
+        },
+        {
+          path: 'database-config',
+          name: 'MetadataDatabaseConfig',
+          component: '/system/metadata/database-config',
+          meta: {
+            title: '数据库配置',
             keepAlive: true,
             roles: ['R_SUPER', 'R_ADMIN']
           }

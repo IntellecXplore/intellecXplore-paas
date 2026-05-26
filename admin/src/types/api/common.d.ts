@@ -22,11 +22,9 @@ declare namespace Api {
         /** 通用搜索参数 */
         type CommonSearchParams = Pick<PaginationParams, 'current' | 'size'>
 
-        /** 分页响应基础结构 */
+        /** 分页响应基础结构（对齐后端 PaginationResult） */
         interface PaginatedResponse<T = any> {
-            records: T[]
-            current: number
-            size: number
+            list: T[]
             total: number
         }
 

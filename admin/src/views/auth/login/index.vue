@@ -17,10 +17,6 @@
                 </ElOption>
               </ElSelect> -->
             </ElFormItem>
-            <ElFormItem prop="tenantCode">
-              <ElInput class="custom-height" :placeholder="$t('login.placeholder.tenantCode')" 
-                v-model.trim="formData.tenantCode" />
-            </ElFormItem>
             <ElFormItem prop="username">
               <ElInput class="custom-height" :placeholder="$t('login.placeholder.username')"
                 v-model.trim="formData.username" />
@@ -134,7 +130,6 @@ const systemName = AppConfig.systemInfo.name
 const formRef = ref<FormInstance>()
 
 const formData = reactive({
-  tenantCode: '',
   account: '',
   username: '',
   password: '',
@@ -174,18 +169,15 @@ const handleSubmit = async () => {
     }
     loading.value = true
     // 登录请求
-    const { username, password, tenantCode } = formData
-    const response = await fetchLogin({ username, password, ...(tenantCode ? { tenantCode } : {}) })
-    const { accessToken, refreshToken, accessExpiresIn, refreshExpiresIn, currentTenantId, tenants } = response
+    const { username, password } = formData
+    const response = await fetchLogin({ username, password })
+    const { accessToken, refreshToken, accessExpiresIn, refreshExpiresIn } = response
     // 验证token
     if (!accessToken) {
       throw new Error('Login failed - no token received')
     }
     // 存储 accessToken 和 refreshToken
     userStore.setToken(accessToken, refreshToken)
-    // 存储租户信息
-    if (currentTenantId) userStore.setCurrentTenantId(currentTenantId)
-    if (tenants?.length) userStore.setTenantList(tenants)
     userStore.setLoginStatus(true)
     // 登录成功处理
     showLoginSuccessNotice()

@@ -42,7 +42,7 @@ import { setPageTitle } from '@/utils/router'
 import { resetRouterState } from '@/router/guards/beforeEach'
 import { useMenuStore } from './menu'
 import { StorageConfig } from '@/utils/storage/storage-config'
-import { fetchLogout, fetchTenantList, fetchSwitchTenant } from '@/api/auth'
+import { fetchLogout } from '@/api/auth'
 
 /**
  * 用户状态管理
@@ -67,11 +67,6 @@ export const useUserStore = defineStore(
     const accessToken = ref('')
     // 刷新令牌（由后端 HTTP-only Cookie 管理，前端不存储）
     const refreshToken = ref('')
-    // 当前租户 ID
-    const currentTenantId = ref<number>(0)
-    // 用户可访问的租户列表
-    const tenantList = ref<Api.Auth.TenantInfo[]>([])
-
     // 计算属性：获取用户信息
     const getUserInfo = computed(() => info.value)
     // 计算属性：获取设置状态
@@ -139,42 +134,6 @@ export const useUserStore = defineStore(
     }
 
     /**
-     * 设置当前租户 ID
-     */
-    const setCurrentTenantId = (id: number) => {
-      currentTenantId.value = id
-    }
-
-    /**
-     * 设置租户列表
-     */
-    const setTenantList = (list: Api.Auth.TenantInfo[]) => {
-      tenantList.value = list
-    }
-
-    /**
-     * 获取用户租户列表
-     */
-    const fetchTenants = async () => {
-      const tenants = await fetchTenantList()
-      if (tenants) setTenantList(tenants)
-    }
-
-    /**
-     * 切换到指定租户
-     */
-    const switchTenant = async (tenantId: number) => {
-      const res = await fetchSwitchTenant(tenantId)
-      if (res) {
-        setToken(res.accessToken, res.refreshToken)
-        setCurrentTenantId(res.currentTenantId ?? tenantId)
-        tenantList.value = res.tenants || []
-        // 刷新页面以应用新的租户上下文
-        window.location.reload()
-      }
-    }
-
-    /**
      * 退出登录
      * 清空所有用户相关状态并跳转到登录页
      * 如果是同一账号重新登录，保留工作台标签页
@@ -194,9 +153,6 @@ export const useUserStore = defineStore(
       lockPassword.value = ''
       // 清空访问令牌
       accessToken.value = ''
-      // 清空租户信息
-      currentTenantId.value = 0
-      tenantList.value = []
       // refreshToken 在 HTTP-only Cookie 中，由后端清除
       // 注意：不清空工作台标签页，等下次登录时根据用户判断
       // 移除iframe路由缓存
@@ -251,8 +207,6 @@ export const useUserStore = defineStore(
       searchHistory,
       accessToken,
       refreshToken,
-      currentTenantId,
-      tenantList,
       getUserInfo,
       getSettingState,
       getWorktabState,
@@ -263,10 +217,6 @@ export const useUserStore = defineStore(
       setLockStatus,
       setLockPassword,
       setToken,
-      setCurrentTenantId,
-      setTenantList,
-      fetchTenants,
-      switchTenant,
       logOut,
       checkAndClearWorktabs
     }
