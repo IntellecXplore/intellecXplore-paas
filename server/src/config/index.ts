@@ -19,6 +19,7 @@ raw.app = {
     geoIpTimeoutMs: 1500,
     ...raw.app,
 };
+raw.multiTenant = raw.multiTenant ?? false;
 const config = raw;
 
 /**
@@ -148,6 +149,8 @@ interface IConfig {
         maxToolRounds: number;
         conversationTTL: number;
     },
+    /** 多租户开关（默认 false = 单租户模式，true = 启用租户隔离与切换） */
+    multiTenant: boolean,
 };
 
 export default config as IConfig;

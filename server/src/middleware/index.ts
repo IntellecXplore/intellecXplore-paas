@@ -12,6 +12,7 @@ import { IpRateLimitGuard, IpRateLimitRecord } from './guards/ipratelimit';
 
 const { guard } = config;
 const isPrint = false; // 是否打印日志
+const multiTenant = config.multiTenant ?? false;
 
 /**
  * 执行守卫并处理错误
@@ -38,14 +39,18 @@ export function GlobalMiddleware(app: Elysia) {
         await executeGuard(AnalysisRoute, ctx, '通过了路由分析器-->');
         if (!isTestMode) {
             await executeGuard(AuthGuard, ctx, '通过了认证守卫-->');
-            await executeGuard(TenantGuard, ctx, '通过了租户守卫-->');
+            if (multiTenant) await executeGuard(TenantGuard, ctx, '通过了租户守卫-->');
             await executeGuard(IpRateLimitGuard, ctx, '通过了ip限流守卫-->');
             await executeGuard(PermissionGuard, ctx, '通过了权限守卫-->');
         } else {
             // TEST_MODE: 注入模拟用户上下文，跳过认证/租户/限流/权限中间件
-            (ctx as any).user = { userId: 1, userName: 'test-admin', tenantId: 1 };
-            (ctx as any).tenant = { tenantId: 1, tenantName: 'default', status: 1 };
-            (ctx as any).tenantId = 1;
+            const testCtx: any = { userId: 1, userName: 'test-admin' };
+            if (multiTenant) {
+                testCtx.tenantId = 1;
+                (ctx as any).tenant = { tenantId: 1, tenantName: 'default', status: 1 };
+                (ctx as any).tenantId = 1;
+            }
+            (ctx as any).user = testCtx;
         }
     });
 };

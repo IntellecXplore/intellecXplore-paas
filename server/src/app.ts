@@ -46,8 +46,8 @@ export async function CreateApp() {
     // 开发环境：启用 OpenAPI 文档
     if (appEnv === 'development') await configureOpenAPI(app);
 
-    // 配置 BullMQ UI (存在问题，正常接口会被拦住)
-    // await configureBullMQUI(app);
+    // 配置 BullMQ UI
+    await configureBullMQUI(app);
 
     // 注册全局中间件
     GlobalMiddleware(app);
@@ -68,12 +68,12 @@ export async function CreateApp() {
  */
 async function configureBullMQUI(app: Elysia) {
     try {
-        /**
-         * 如果你已经找到了这里，那么恭喜你孩子，我将告诉你解决方案：
-         * 去 node_modules\@bull-board\ui\dist\index.ejs 
-         * 修改 <base href="<%= basePath %>" />
-         * 改成 <base href="你的app.prefix即可<%= basePath %>" />
-         */
+        // [WORKAROUND] Bull Board @bull-board/elysia 的 scoped plugin 存在两个 bug：
+        // 1. onError 泄漏到父 app，覆盖全局错误处理器（需 patch ElysiaAdapter.setErrorHandler 为 no-op）
+        //    上游 issue: https://github.com/elysiajs/elysia/issues/469
+        // 2. index.ejs 的 <base href> 不包含 app.prefix，导致静态资源 404（需 patch index.ejs）
+        //    上游 issue: https://github.com/felixmosh/bull-board/issues/912
+        // 以上两个 node_modules 修改在 pnpm install 后会丢失，需通过 postinstall 脚本自动修复。
         const serverAdapter = new ElysiaAdapter('/bullmq');
         createBullBoard({
             queues,

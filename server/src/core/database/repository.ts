@@ -3,12 +3,14 @@ import { ParseDateFields } from '@/types/dto';
 import { PgTable, TableConfig, PgColumn } from 'drizzle-orm/pg-core';
 import { SQL, eq, ne, inArray, notInArray, like, notLike, ilike, notIlike, gt, gte, lt, lte, between, notBetween, isNull, isNotNull, and, or, not, asc, desc, count, sql, getTableColumns } from 'drizzle-orm';
 import pg from '@/core/database/pg';
+import config from '@/config';
 
 // 导出 db 实例供直接使用
 export const db = pg;
 
-/** 从 ctx 中提取 tenantId，用于 Repository 自动作用域 */
-function getTenantIdFromCtx(ctx: Context | null | undefined): number | undefined {
+/** 从 ctx 中提取 tenantId，用于 Repository 自动作用域。单租户模式返回 undefined 以停用所有租户过滤 */
+export function getTenantIdFromCtx(ctx: Context | null | undefined): number | undefined {
+    if (!config.multiTenant) return undefined;
     return (ctx as any)?.tenantId ?? undefined;
 };
 
@@ -202,13 +204,16 @@ export async function UpdateByKey<T extends PgTable>(
     if (!keyColumn) throw new Error(`Column "${keyColumnName}" not found in schema`);
     let data: any = undefined;
     if (ctx) {
-        data = ParseDateFields(ctx.body);
+        data = ParseDateFields(ctx.body || {});
         const updateByColumn = (schema as any)['updateBy'];
         const updateBy = (ctx as any)?.user?.userId || null;
         if (updateByColumn && updateBy) data.updateBy = updateBy;
     } else {
         if (customData) data = ParseDateFields(customData);
     };
+    if (ctx && customData) {
+        data = { ...data, ...ParseDateFields(customData) };
+    }
     const keyValue = (data as any)[keyColumnName];
     if (keyValue === undefined || keyValue === null) throw new Error(`Key value for "${keyColumnName}" is required in data`);
     const updateTimeColumn = (schema as any)['updateTime'];
@@ -240,13 +245,16 @@ export async function UpdateByKeyAndRes<T extends PgTable>(
     if (!keyColumn) throw new Error(`Column "${keyColumnName}" not found in schema`);
     let data: any = undefined;
     if (ctx) {
-        data = ParseDateFields(ctx.body);
+        data = ParseDateFields(ctx.body || {});
         const updateByColumn = (schema as any)['updateBy'];
         const updateBy = (ctx as any)?.user?.userId || null;
         if (updateByColumn && updateBy) data.updateBy = updateBy;
     } else {
         if (customData) data = ParseDateFields(customData);
     };
+    if (ctx && customData) {
+        data = { ...data, ...ParseDateFields(customData) };
+    }
     const keyValue = (data as any)[keyColumnName];
     if (keyValue === undefined || keyValue === null) throw new Error(`Key value for "${keyColumnName}" is required in data`);
     const updateTimeColumn = (schema as any)['updateTime'];

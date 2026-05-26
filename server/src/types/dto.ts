@@ -88,6 +88,7 @@ export const CreateUpdateDto = (schema: any, primaryKey: string = 'id') => {
  * @returns 转换后的数据
  */
 export const ParseDateFields = (data: any) => {
+    if (!data) return data;
     if (data.createTime && typeof data.createTime === 'string') {
         data.createTime = new Date(data.createTime);
     };

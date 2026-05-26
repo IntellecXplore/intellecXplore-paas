@@ -110,7 +110,7 @@ async function GetUserTenants(userId: number) {
     }));
 };
 
-/** 确保用户至少有一个租户，若无则自动关联默认租户（tenantId=1） */
+/** 确保用户至少有一个租户，若无则拒绝登录 */
 async function EnsureUserHasTenant(userId: number): Promise<number> {
     const tenants = await GetUserTenants(userId);
     if (tenants.length > 0) {
@@ -118,13 +118,8 @@ async function EnsureUserHasTenant(userId: number): Promise<number> {
         const def = tenants.find(t => t.isDefault);
         return def ? def.tenantId : tenants[0].tenantId;
     }
-    // 无租户关联 → 自动绑定默认租户
-    await pg.insert(systemUserTenantSchema).values({
-        userId,
-        tenantId: 1,
-        isDefault: 1,
-    } as any);
-    return 1;
+    // 无租户关联 → 拒绝登录
+    throw new Error('当前账号无租户信息，请联系管理员');
 };
 
 export async function accountPasswordLogin(ctx: Context) {
@@ -138,26 +133,32 @@ export async function accountPasswordLogin(ctx: Context) {
             await addPasswordErrorTimes(ctx);
             return BaseResultData.fail(400, '密码错误');
         };
-        // 确定登录租户：前端指定 > 默认租户
-        const tenants = await GetUserTenants(user.userId);
-        let tenantId: number;
-        if (reqTenantId) {
-            // 通过 tenantId 指定
-            const target = tenants.find(t => t.tenantId === reqTenantId);
-            if (!target) return BaseResultData.fail(403, '无权访问该租户');
-            if (!target.status) return BaseResultData.fail(403, '该租户已禁用');
-            tenantId = reqTenantId;
-        } else if (tenantCode) {
-            // 通过租户标识指定
-            const target = tenants.find(t => t.tenantCode === tenantCode);
-            if (!target) return BaseResultData.fail(403, '无权访问该租户');
-            if (!target.status) return BaseResultData.fail(403, '该租户已禁用');
-            tenantId = target.tenantId;
-        } else {
-            // 未指定则使用默认租户
-            tenantId = await EnsureUserHasTenant(user.userId);
+        const multiTenant = config.multiTenant ?? false;
+        let tenantId: number | undefined;
+        let tenants: any[] | undefined;
+        if (multiTenant) {
+            // 确定登录租户：前端指定 > 默认租户
+            tenants = await GetUserTenants(user.userId);
+            if (reqTenantId) {
+                const target = tenants.find(t => t.tenantId === reqTenantId);
+                if (!target) return BaseResultData.fail(403, '无权访问该租户');
+                if (!target.status) return BaseResultData.fail(403, '该租户已禁用');
+                tenantId = reqTenantId;
+            } else if (tenantCode) {
+                const target = tenants.find(t => t.tenantCode === tenantCode);
+                if (!target) return BaseResultData.fail(403, '无权访问该租户');
+                if (!target.status) return BaseResultData.fail(403, '该租户已禁用');
+                tenantId = target.tenantId;
+            } else {
+                try {
+                    tenantId = await EnsureUserHasTenant(user.userId);
+                } catch (e: any) {
+                    return BaseResultData.fail(403, e.message || '当前账号无租户信息，请联系管理员');
+                }
+            }
         }
-        const payload = { userId: user.userId, tenantId };
+        const payload: any = { userId: user.userId };
+        if (tenantId != null) payload.tenantId = tenantId;
         const baseKey = CacheEnum.REFRESH_TOKEN + `${user.userId}:`;
         const oldkeys = await Keys(baseKey);
         if (oldkeys.length) {
@@ -169,7 +170,7 @@ export async function accountPasswordLogin(ctx: Context) {
         const { roles, permissions } = await GetUserRoleAndPermission(user.userId, tenantId);
         const clientInfo = await GetClientInfo(ctx);
         (ctx as any).clientInfo = clientInfo;
-        const userInfo = {
+        const userInfo: any = {
             userId: user.userId,
             username: user.username,
             email: user.email,
@@ -182,14 +183,17 @@ export async function accountPasswordLogin(ctx: Context) {
             permissions,
             userType: 'admin' as IAccountType,
             loginTime: GetNowTime(),
-            tenantId,
-            tenants,
         };
+        if (tenantId != null) userInfo.tenantId = tenantId;
+        if (tenants != null) userInfo.tenants = tenants;
         const onlineKey = CacheEnum.ONLINE_USER + user.userId;
         const isSetOnline = await Set(onlineKey, userInfo);
         if (!isSetOnline) return BaseResultData.fail(500, '在线用户设置失败');
         (ctx as any).user = userInfo;
-        return BaseResultData.ok({ ...tokens, currentTenantId: tenantId, tenants });
+        if (multiTenant) {
+            return BaseResultData.ok({ ...tokens, currentTenantId: tenantId, tenants });
+        }
+        return BaseResultData.ok(tokens);
     } catch (error) {
         return BaseResultData.fail(500, error);
     }
